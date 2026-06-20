@@ -29,6 +29,29 @@ def save_surface(surface, relative_path):
     pygame.image.save(surface, ASSETS / relative_path)
 
 
+def lighten(color, amount):
+    return tuple(min(255, c + amount) for c in color)
+
+
+def darken(color, amount):
+    return tuple(max(0, c - amount) for c in color)
+
+
+def polish_surface(surface):
+    width, height = surface.get_size()
+    high_res = pygame.transform.smoothscale(surface, (width * 4, height * 4))
+
+    light = pygame.Surface(high_res.get_size(), pygame.SRCALPHA)
+    pygame.draw.ellipse(light, (14, 14, 12, 0), (-width, -height, width * 5, height * 3))
+    high_res.blit(light, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+
+    shade = pygame.Surface(high_res.get_size(), pygame.SRCALPHA)
+    pygame.draw.ellipse(shade, (10, 10, 12, 0), (-width, height * 2, width * 6, height * 3))
+    high_res.blit(shade, (0, 0), special_flags=pygame.BLEND_RGB_SUB)
+
+    return pygame.transform.smoothscale(high_res, (width, height))
+
+
 def shadow(surface, center, radius):
     pygame.draw.ellipse(surface, (0, 0, 0, 90), (center[0] - radius, center[1] + radius // 2, radius * 2, radius // 2))
 
@@ -39,9 +62,14 @@ def tower_sprite(tower_type, color, accent, firing=False, frame=0):
     shadow(surface, (24, 26), 16)
     if firing:
         pygame.draw.circle(surface, (*accent, 70), (24, 24), 22)
+    pygame.draw.ellipse(surface, (54, 48, 40, 190), (9, 31, 30, 10))
+    pygame.draw.ellipse(surface, (185, 175, 145, 95), (12, 29, 24, 6))
     pygame.draw.circle(surface, color, (24, 13 - bob), 7)
+    pygame.draw.circle(surface, darken(color, 55), (24, 13 - bob), 7, 1)
     pygame.draw.rect(surface, color, (15, 20 - bob, 18, 17))
-    pygame.draw.rect(surface, tuple(max(0, c - 45) for c in color), (16, 34, 16, 6))
+    pygame.draw.rect(surface, lighten(color, 36), (17, 21 - bob, 14, 4), border_radius=2)
+    pygame.draw.rect(surface, darken(color, 45), (16, 34, 16, 6))
+    pygame.draw.rect(surface, darken(color, 65), (15, 20 - bob, 18, 17), 1)
     pygame.draw.line(surface, (35, 35, 35), (19, 36), (14, 43), 3)
     pygame.draw.line(surface, (35, 35, 35), (29, 36), (34, 43), 3)
 
@@ -108,7 +136,9 @@ def tower_sprite(tower_type, color, accent, firing=False, frame=0):
         pygame.draw.line(surface, (255, 245, 160), (36, 10), (36, 22), 2)
         if firing:
             pygame.draw.circle(surface, (255, 250, 170), (36, 16), 12, 2)
-    return surface
+    pygame.draw.circle(surface, (255, 255, 255, 48), (21, 11 - bob), 2)
+    pygame.draw.line(surface, (255, 255, 255, 42), (18, 21 - bob), (29, 21 - bob), 1)
+    return polish_surface(surface)
 
 
 def enemy_sprite(kind, color, boss=False, flying=False, frame=0):
@@ -125,10 +155,12 @@ def enemy_sprite(kind, color, boss=False, flying=False, frame=0):
 
     if kind in ("tank", "armored") or boss:
         pygame.draw.rect(surface, color, body_rect, border_radius=5 if boss else 3)
-        pygame.draw.rect(surface, tuple(max(0, c - 45) for c in color), body_rect, 2, border_radius=5 if boss else 3)
+        pygame.draw.rect(surface, lighten(color, 34), (body_rect.x + 3, body_rect.y + 3, max(2, body_rect.w - 10), 5), border_radius=3)
+        pygame.draw.rect(surface, darken(color, 45), body_rect, 2, border_radius=5 if boss else 3)
     else:
         pygame.draw.circle(surface, color, (center, center + wobble), body_radius)
-        pygame.draw.circle(surface, tuple(min(255, c + 45) for c in color), (center - body_radius // 3, center - body_radius // 3), max(3, body_radius // 3))
+        pygame.draw.circle(surface, lighten(color, 45), (center - body_radius // 3, center - body_radius // 3), max(3, body_radius // 3))
+        pygame.draw.circle(surface, darken(color, 45), (center, center + wobble), body_radius, 1)
 
     eye_y = center - 2 + wobble
     pygame.draw.circle(surface, (35, 35, 35), (center - body_radius // 3, eye_y), 2)
@@ -166,7 +198,8 @@ def enemy_sprite(kind, color, boss=False, flying=False, frame=0):
     if boss:
         pygame.draw.circle(surface, (255, 210, 90), (center, center), radius + 9, 2)
         pygame.draw.polygon(surface, (255, 210, 90), [(center - 14, center - 24), (center - 6, center - 34), (center, center - 24), (center + 8, center - 34), (center + 14, center - 24)])
-    return surface
+    pygame.draw.circle(surface, (255, 255, 255, 40), (center - body_radius // 3, center - body_radius // 2 + wobble), max(2, body_radius // 4))
+    return polish_surface(surface)
 
 
 def terrain_tile(kind, theme=None):
@@ -217,7 +250,19 @@ def terrain_tile(kind, theme=None):
         x = (i * 17 + len(kind) * 5) % 54
         y = (i * 11 + len(kind) * 7) % 54
         pygame.draw.rect(surface, fleck, (x, y, 10, 4), border_radius=2)
-    return surface
+    if "road" in kind:
+        for i in range(5):
+            x = (i * 19 + len(theme) * 3) % 54
+            y = (i * 13 + len(kind) * 4) % 54
+            pygame.draw.line(surface, darken(base, 18), (x, y), (min(53, x + 13), min(53, y + 4)), 1)
+            pygame.draw.circle(surface, lighten(fleck, 20), ((x + 7) % 54, (y + 9) % 54), 1)
+    else:
+        for i in range(12):
+            x = (i * 11 + len(theme) * 5) % 54
+            y = (i * 7 + len(kind) * 9) % 54
+            blade = lighten(fleck, 16) if i % 2 else darken(fleck, 8)
+            pygame.draw.line(surface, blade, (x, y + 4), (min(53, x + 3), max(0, y - 3)), 1)
+    return polish_surface(surface)
 
 
 def marker(kind):
@@ -229,11 +274,13 @@ def marker(kind):
         pygame.draw.polygon(surface, (235, 245, 210), [(19, 14), (34, 24), (19, 34)])
     else:
         pygame.draw.rect(surface, (235, 210, 190), (16, 16, 16, 16), 3)
-    return surface
+    pygame.draw.circle(surface, (255, 255, 255, 38), (18, 16), 5)
+    return polish_surface(surface)
 
 
 def projectile(kind, color):
     surface = pygame.Surface((24, 24), pygame.SRCALPHA)
+    pygame.draw.circle(surface, (*color, 45), (12, 12), 10)
     if kind == "archer":
         pygame.draw.line(surface, color, (3, 15), (21, 8), 3)
         pygame.draw.polygon(surface, (230, 230, 190), [(20, 8), (15, 5), (17, 12)])
@@ -270,7 +317,7 @@ def projectile(kind, color):
         pygame.draw.line(surface, (255, 245, 160), (12, 7), (12, 17), 2)
     else:
         pygame.draw.circle(surface, color, (12, 12), 4)
-    return surface
+    return polish_surface(surface)
 
 
 def effect(kind):
@@ -320,7 +367,7 @@ def effect(kind):
         pygame.draw.circle(surface, (150, 110, 30, 180), (32, 32), 15, 2)
         pygame.draw.line(surface, (255, 255, 180, 230), (32, 9), (32, 55), 2)
         pygame.draw.line(surface, (255, 255, 180, 230), (9, 32), (55, 32), 2)
-    return surface
+    return polish_surface(surface)
 
 
 def write_wav(relative_path, notes, volume=0.25, sample_rate=22050):

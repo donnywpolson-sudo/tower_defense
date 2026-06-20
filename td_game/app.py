@@ -263,7 +263,7 @@ def get_scaled_sprite(sprite, size):
     key = (id(sprite), size)
     scaled = scaled_sprite_cache.get(key)
     if scaled is None:
-        scaled = pygame.transform.scale(sprite, size)
+        scaled = pygame.transform.smoothscale(sprite, size)
         scaled_sprite_cache[key] = scaled
     return scaled
 
@@ -1053,6 +1053,10 @@ class Tower:
         if self.selected_branch is None or self.level < BRANCH_UNLOCK_LEVEL:
             return
 
+        branch = self.branch_data()
+        focus = branch.get("focus") if branch else None
+        tags = set(branch.get("tags", ())) if branch else set()
+
         if self.branch_has("mortar"):
             self.range += 45
             self.fire_rate += 0.12
@@ -1072,6 +1076,20 @@ class Tower:
             self.fire_rate = max(0.035, self.fire_rate - 0.015)
         if self.branch_has("hazard") or self.branch_has("trap"):
             self.range += 10
+        if focus == "damage":
+            self.damage *= 1.04
+        elif focus == "control":
+            self.range += 7
+            self.fire_rate = max(0.035, self.fire_rate - 0.006)
+        elif focus == "utility":
+            self.range += 6
+        elif focus == "weird":
+            self.damage *= 1.025
+            self.range += 3
+        if "boss" in tags and self.level >= 4:
+            self.damage *= 1.035
+        if "swarm" in tags or "splash" in tags:
+            self.fire_rate = max(0.035, self.fire_rate - 0.004)
 
     def upgrade(self, tower_type):
         if not self.can_upgrade():
@@ -2480,6 +2498,7 @@ def get_upgrade_options(tower):
         return []
 
     data = TOWER_TYPES[tower.tower_type]
+    branch = tower.branch_data()
     next_level = tower.level + 1
     research_cost = RESEARCH_UPGRADE_COSTS.get(tower.level, 0) if tower.level >= BASE_MAX_TOWER_LEVEL else 0
     min_towers = get_min_towers_for_upgrade(tower.level) if tower.level >= BASE_MAX_TOWER_LEVEL else 1
@@ -2501,6 +2520,9 @@ def get_upgrade_options(tower):
             "research_cost": research_cost,
             "min_towers": min_towers,
             "description": description,
+            "synergy": branch["synergy"] if branch else None,
+            "keystone": branch["keystone"] if branch else None,
+            "mastery": branch["mastery"] if branch else None,
             "color": data["color"],
             "enabled": money >= cost and tower.can_upgrade(),
         }
@@ -2521,6 +2543,10 @@ def get_branch_options(tower):
                 "short": branch["short"],
                 "role": branch["role"],
                 "effect_preview": branch["effect_preview"],
+                "focus": FOCUS_LABELS.get(branch["focus"], branch["focus"].title()),
+                "synergy": branch["synergy"],
+                "keystone": branch["keystone"],
+                "mastery": branch["mastery"],
                 "cost": cost,
                 "color": branch["color"],
                 "enabled": money >= cost,
@@ -2741,7 +2767,12 @@ def draw_upgrade_panel():
     )
     family = data.get("family", data["label"]) if data else "Basic"
     branch = selected_tower.branch_data()
-    branch_text = branch["name"] if branch else "Choose branch at Tier 3"
+    if branch:
+        progress = min(5, max(1, selected_tower.level - BRANCH_UNLOCK_LEVEL + 1))
+        focus = FOCUS_LABELS.get(branch["focus"], branch["focus"].title())
+        branch_text = f"{branch['short']} {focus} Path {progress}/5"
+    else:
+        branch_text = "Choose branch at Tier 3"
     draw_small_text(
         family,
         panel.x + 14,
@@ -2783,7 +2814,7 @@ def draw_upgrade_panel():
             pygame.draw.rect(screen, outline, rect, 2)
             draw_small_text(f"{index + 1}. {option['title']}", rect.x + 8, rect.y + 4, text_color)
             draw_tiny_text(f"${option['cost']}", rect.right - 42, rect.y + 7, text_color)
-            preview = option["effect_preview"]
+            preview = f"{option['focus']}: {option['effect_preview']}"
             if len(preview) > 34:
                 preview = preview[:33] + "."
             draw_tiny_text(preview, rect.x + 8, rect.y + 19, (215, 220, 200) if enabled else text_color)
@@ -3193,9 +3224,12 @@ def draw_sidebar_tooltips():
             if rect.collidepoint(mouse_pos):
                 lines = [
                     f"{option['title']} - ${option['cost']}",
+                    f"Focus: {option['focus']}",
                     option["role"],
-                    option["effect_preview"],
                 ]
+                lines.extend(wrap_text(option["effect_preview"], 32))
+                lines.extend(wrap_text(f"Synergy: {option['synergy']}", 32))
+                lines.extend(wrap_text(f"Keystone: {option['keystone']}", 32))
                 if not option["enabled"]:
                     lines.append("Not enough money")
                 draw_tooltip(lines, rect.y - 72)
@@ -3217,6 +3251,12 @@ def draw_sidebar_tooltips():
                 if option.get("research_cost", 0):
                     cost_line += f" + {option['research_cost']} research"
                 lines = [option["title"], cost_line, option["description"]]
+                if option.get("synergy"):
+                    lines.extend(wrap_text(f"Synergy: {option['synergy']}", 32))
+                if option.get("keystone") and selected_tower.level >= BASE_MAX_TOWER_LEVEL - 1:
+                    lines.extend(wrap_text(f"Keystone: {option['keystone']}", 32))
+                if option.get("mastery") and selected_tower.level >= PARAGON_LEVEL:
+                    lines.extend(wrap_text(f"Mastery: {option['mastery']}", 32))
                 if not option["enabled"]:
                     lines.append("Need money, research, or more towers")
                 draw_tooltip(lines, rect.y - 86)

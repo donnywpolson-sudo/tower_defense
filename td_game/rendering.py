@@ -36,7 +36,7 @@ class PygameRenderer:
         self.window.fill((12, 14, 12))
         draw_width = max(1, int(surface.get_width() * scale))
         draw_height = max(1, int(surface.get_height() * scale))
-        scaled_screen = pygame.transform.scale(surface, (draw_width, draw_height))
+        scaled_screen = pygame.transform.smoothscale(surface, (draw_width, draw_height))
         self.window.blit(scaled_screen, (offset_x + shake_x, offset_y + shake_y))
         pygame.display.flip()
 
@@ -62,7 +62,7 @@ class OpenGLRenderer:
         self.ctx.enable(moderngl.BLEND)
         self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
         self.texture = self.ctx.texture(size, 4)
-        self.texture.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        self.texture.filter = (moderngl.LINEAR, moderngl.LINEAR)
         self.texture.repeat_x = False
         self.texture.repeat_y = False
 
@@ -119,7 +119,7 @@ class OpenGLRenderer:
         if self.texture.size != surface.get_size():
             self.texture.release()
             self.texture = self.ctx.texture(surface.get_size(), 4)
-            self.texture.filter = (self.moderngl.NEAREST, self.moderngl.NEAREST)
+            self.texture.filter = (self.moderngl.LINEAR, self.moderngl.LINEAR)
             self.texture.repeat_x = False
             self.texture.repeat_y = False
 

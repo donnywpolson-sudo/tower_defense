@@ -24,6 +24,15 @@ class TowerFamilyDataTests(unittest.TestCase):
             self.assertEqual(len(data.BRANCH_DEFINITIONS[tower_type]), 3)
             self.assertEqual(tuple(data.BRANCH_DEFINITIONS[tower_type]), data.TOWER_TYPES[tower_type]["branch_options"])
 
+    def test_every_branch_has_readable_depth_metadata(self):
+        for tower_type in data.ROOT_TOWER_IDS:
+            for branch in data.BRANCH_DEFINITIONS[tower_type].values():
+                self.assertIn(branch["focus"], data.FOCUS_LABELS)
+                self.assertTrue(branch["keystone"])
+                self.assertTrue(branch["synergy"])
+                self.assertTrue(branch["mastery"])
+                self.assertEqual(len(branch["milestones"]), 5)
+
     def test_legacy_towers_map_to_branch_mechanics(self):
         expected = {
             "poison": ("archer", "trapline"),
@@ -80,6 +89,15 @@ class TowerBranchUpgradeTests(unittest.TestCase):
 
         self.assertTrue(app.get_branch_options(tower))
         self.assertTrue(all(not option["enabled"] for option in app.get_branch_options(tower)))
+
+    def test_branch_options_expose_depth_without_extra_menu(self):
+        tower = app.Tower(100, 100, "archer", data.SHOP_COSTS["archer"])
+        option = app.get_branch_options(tower)[0]
+
+        self.assertIn("focus", option)
+        self.assertIn("synergy", option)
+        self.assertIn("keystone", option)
+        self.assertIn("mastery", option)
 
 
 if __name__ == "__main__":

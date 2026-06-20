@@ -1,6 +1,6 @@
 # Tower Defense
 
-A Python/Pygame tower defense game with grid building, weapon tower upgrade trees, boss waves, research upgrades, generated pixel-art assets, and sound effects.
+A Python/Pygame tower defense game with grid building, weapon tower upgrade trees, boss waves, research upgrades, polished generated assets, and sound effects.
 
 ## Run
 

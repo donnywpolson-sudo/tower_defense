@@ -10,7 +10,7 @@ def load_image(relative_path, scale=None):
     try:
         image = pygame.image.load(str(path)).convert_alpha()
         if scale:
-            image = pygame.transform.scale(image, scale)
+            image = pygame.transform.smoothscale(image, scale)
         return image
     except pygame.error:
         return None

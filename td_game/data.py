@@ -842,7 +842,118 @@ REQUIRED_BRANCH_KEYS = (
     "color",
     "tiers",
     "descriptions",
+    "focus",
+    "keystone",
+    "synergy",
+    "mastery",
+    "milestones",
 )
+
+
+FOCUS_LABELS = {
+    "damage": "Damage",
+    "control": "Control",
+    "utility": "Utility",
+    "weird": "Specialist",
+}
+
+MECHANIC_KEYSTONES = (
+    (("boss_pressure",), "Boss pressure scales during long fights"),
+    (("crit",), "Critical hits spike against marked targets"),
+    (("mark", "paint"), "Marked enemies become shared priority targets"),
+    (("trap",), "Road traps add control between tower shots"),
+    (("poison",), "Venom keeps damaging high-health enemies"),
+    (("pet_hit",), "Companion strikes add periodic extra hits"),
+    (("hold",), "Holds create a stable kill zone"),
+    (("pierce", "armor_break", "shield_break"), "Piercing hits expose armor and shields"),
+    (("shared_targeting",), "Nearby towers coordinate target focus"),
+    (("delayed_damage", "echo"), "Stored damage detonates after setup"),
+    (("spin_up",), "Sustained fire ramps into higher DPS"),
+    (("slow", "pin"), "Suppression keeps fast enemies in range"),
+    (("adaptive_ammo",), "Ammo adapts to the wave's main threat"),
+    (("splash", "cluster", "mortar"), "Explosions punish clustered lanes"),
+    (("hazard", "crater", "burn"), "Hazards leave damaging road zones"),
+    (("freeze", "cryo_prison"), "Freeze windows set up burst damage"),
+    (("shatter",), "Frozen enemies burst when finished"),
+    (("stasis", "slow_motion"), "Time effects pause dangerous pushes"),
+    (("chain", "storm_pulse"), "Lightning jumps through packed targets"),
+    (("overclock", "charge"), "Stored charge boosts nearby towers"),
+    (("pull", "emp"), "Magnet pulses group enemies and disrupt shields"),
+    (("mine", "barricade"), "Engineers seed the lane with traps"),
+    (("bounty", "contract"), "Contracts convert held kills into money"),
+    (("aura", "damage_buff", "rate_buff"), "Aura buffs reward tight tower clusters"),
+    (("research", "prototype"), "Assists convert into research tempo"),
+    (("threat_scan",), "Scans steer damage into priority targets"),
+)
+
+TAG_SYNERGIES = {
+    "boss": "Pairs with marks, armor break, and long lanes",
+    "mark": "Pairs with Archer, Sniper, and Signal targeting",
+    "trap": "Pairs with Cannon splash and Barracks holds",
+    "poison": "Pairs with slows that keep enemies in the cloud",
+    "pet": "Pairs with rapid marks and wounded targets",
+    "pierce": "Pairs with shield and armored waves",
+    "targeting": "Pairs with any high-damage tower nearby",
+    "rapid": "Pairs with Frost, armor pierce, and on-hit traits",
+    "splash": "Pairs with slows, pulls, and held enemies",
+    "mortar": "Pairs with grouped lanes and long sight lines",
+    "armor": "Pairs with Sniper or Demolition exposure",
+    "hazard": "Pairs with slows, pulls, and repeated path crossings",
+    "freeze": "Pairs with Shatter, Cannon, and Tesla chains",
+    "chain": "Pairs with Frost slow and clustered waves",
+    "anti_air": "Pairs with flying-heavy waves",
+    "energy": "Pairs with rapid-fire towers",
+    "magnet": "Pairs with splash and hazard paths",
+    "melee": "Pairs with Cannon, Frost, and support auras",
+    "mine": "Pairs with Barracks holds and slow lanes",
+    "economy": "Pairs with safe early defenses and long waves",
+    "aura": "Pairs with dense tower clusters",
+    "research": "Pairs with expensive late mastery upgrades",
+}
+
+
+def branch_focus(branch):
+    tags = set(branch["tags"])
+    for focus in ("damage", "control", "utility", "weird"):
+        if focus in tags:
+            return focus
+    return "utility"
+
+
+def branch_keystone(branch):
+    mechanics = set(branch["mechanics"])
+    for candidates, text in MECHANIC_KEYSTONES:
+        if mechanics.intersection(candidates):
+            return text
+    return branch["effect_preview"]
+
+
+def branch_synergy(branch):
+    for tag in branch["tags"]:
+        if tag in TAG_SYNERGIES:
+            return TAG_SYNERGIES[tag]
+    return "Pairs with towers that cover its weak spots"
+
+
+def branch_mastery(branch):
+    focus = branch.get("focus") or branch_focus(branch)
+    if focus == "damage":
+        return "Mastery adds higher priority-target damage"
+    if focus == "control":
+        return "Mastery improves uptime and control coverage"
+    if focus == "utility":
+        return "Mastery improves team support and consistency"
+    return "Mastery strengthens the branch's special mechanic"
+
+
+def branch_milestones(branch):
+    return (
+        f"T3 {branch['tiers'][3]}: {branch['descriptions'][3]}",
+        f"T4 {branch['tiers'][4]}: {branch['descriptions'][4]}",
+        f"T5 {branch['tiers'][5]}: {branch['descriptions'][5]}",
+        f"T6 Keystone: {branch['keystone']}",
+        f"M Mastery: {branch['mastery']}",
+    )
 
 
 def normalize_tower_type(tower_type):
@@ -878,6 +989,12 @@ def _apply_family_metadata():
         family, theme = FAMILY_INFO[tower_type]
         branches = BRANCH_DEFINITIONS[tower_type]
         tower = TOWER_TYPES[tower_type]
+        for branch in branches.values():
+            branch["focus"] = branch_focus(branch)
+            branch["keystone"] = branch_keystone(branch)
+            branch["synergy"] = branch_synergy(branch)
+            branch["mastery"] = branch_mastery(branch)
+            branch["milestones"] = branch_milestones(branch)
         tower["family"] = family
         tower["family_theme"] = theme
         tower["branch_options"] = tuple(branches.keys())

@@ -34,11 +34,14 @@ def shadow(surface, center, radius):
     pygame.draw.ellipse(surface, (0, 0, 0, 90), (center[0] - radius, center[1] + radius // 2, radius * 2, radius // 2))
 
 
-def tower_sprite(tower_type, color, accent, firing=False):
+def tower_sprite(tower_type, color, accent, firing=False, frame=0):
     surface = pygame.Surface((48, 48), pygame.SRCALPHA)
+    bob = 1 if frame % 2 else 0
     shadow(surface, (24, 26), 16)
-    pygame.draw.circle(surface, color, (24, 13), 7)
-    pygame.draw.rect(surface, color, (15, 20, 18, 17))
+    if firing:
+        pygame.draw.circle(surface, (*accent, 70), (24, 24), 22)
+    pygame.draw.circle(surface, color, (24, 13 - bob), 7)
+    pygame.draw.rect(surface, color, (15, 20 - bob, 18, 17))
     pygame.draw.rect(surface, tuple(max(0, c - 45) for c in color), (16, 34, 16, 6))
     pygame.draw.line(surface, (35, 35, 35), (19, 36), (14, 43), 3)
     pygame.draw.line(surface, (35, 35, 35), (29, 36), (34, 43), 3)
@@ -86,18 +89,25 @@ def tower_sprite(tower_type, color, accent, firing=False):
     return surface
 
 
-def enemy_sprite(kind, color, boss=False, flying=False):
+def enemy_sprite(kind, color, boss=False, flying=False, frame=0):
     size = 64 if boss else 32
     surface = pygame.Surface((size, size), pygame.SRCALPHA)
     center = size // 2
     radius = 22 if boss else 12
+    wobble = 1 if frame == 1 else -1 if frame == 2 else 0
+    if frame == 3:
+        color = tuple(min(255, c + 70) for c in color)
     shadow(surface, (center, center + 2), radius)
-    pygame.draw.circle(surface, color, (center, center), radius)
+    pygame.draw.circle(surface, color, (center, center + wobble), radius)
     pygame.draw.circle(surface, tuple(min(255, c + 45) for c in color), (center - radius // 3, center - radius // 3), max(3, radius // 3))
     pygame.draw.circle(surface, (35, 35, 35), (center - radius // 3, center - 2), 2)
     pygame.draw.circle(surface, (35, 35, 35), (center + radius // 3, center - 2), 2)
     if kind in ("shield", "armored") or boss:
         pygame.draw.circle(surface, (225, 225, 245), (center, center), radius + 4, 2)
+    if kind == "shield_cracked":
+        pygame.draw.circle(surface, (225, 225, 245), (center, center), radius + 4, 2)
+        pygame.draw.line(surface, (45, 45, 65), (center - 6, center - 10), (center + 2, center + 1), 2)
+        pygame.draw.line(surface, (45, 45, 65), (center + 2, center + 1), (center - 3, center + 12), 2)
     if flying:
         pygame.draw.arc(surface, (230, 220, 255), (center - radius - 7, center - 12, radius, 18), 2.8, 6.0, 3)
         pygame.draw.arc(surface, (230, 220, 255), (center + 7, center - 12, radius, 18), 3.4, 6.4, 3)
@@ -106,9 +116,38 @@ def enemy_sprite(kind, color, boss=False, flying=False):
     return surface
 
 
-def terrain_tile(kind):
+def terrain_tile(kind, theme=None):
     surface = pygame.Surface((54, 54), pygame.SRCALPHA)
-    if kind == "grass":
+    palettes = {
+        "forest": {
+            "grass": ((27, 42, 30), (44, 64, 36)),
+            "grass_dark": ((20, 32, 24), (34, 50, 30)),
+            "road": ((126, 98, 62), (150, 118, 74)),
+            "road_edge": ((70, 58, 42), (100, 82, 55)),
+        },
+        "swamp": {
+            "grass": ((26, 46, 38), (58, 82, 48)),
+            "grass_dark": ((16, 33, 31), (34, 61, 48)),
+            "road": ((86, 94, 59), (114, 128, 72)),
+            "road_edge": ((43, 58, 44), (72, 88, 55)),
+        },
+        "snow": {
+            "grass": ((165, 184, 184), (205, 224, 224)),
+            "grass_dark": ((112, 138, 146), (166, 190, 196)),
+            "road": ((112, 122, 130), (150, 160, 170)),
+            "road_edge": ((70, 80, 92), (105, 115, 128)),
+        },
+        "lava": {
+            "grass": ((46, 31, 30), (86, 45, 34)),
+            "grass_dark": ((29, 24, 25), (68, 35, 30)),
+            "road": ((78, 58, 50), (130, 70, 42)),
+            "road_edge": ((38, 30, 30), (95, 42, 34)),
+        },
+    }
+    theme = theme or "forest"
+    if theme in palettes and kind in palettes[theme]:
+        base, fleck = palettes[theme][kind]
+    elif kind == "grass":
         base = (27, 42, 30)
         fleck = (44, 64, 36)
     elif kind == "grass_dark":
@@ -173,6 +212,12 @@ def effect(kind):
         pygame.draw.circle(surface, (255, 245, 120, 200), (32, 32), 12)
         pygame.draw.line(surface, (255, 255, 255, 230), (32, 12), (32, 52), 2)
         pygame.draw.line(surface, (255, 255, 255, 230), (12, 32), (52, 32), 2)
+    elif kind == "shield_break":
+        pygame.draw.circle(surface, (210, 225, 255, 110), (32, 32), 24, 3)
+        pygame.draw.line(surface, (245, 250, 255, 210), (18, 18), (31, 32), 3)
+        pygame.draw.line(surface, (245, 250, 255, 210), (31, 32), (24, 49), 3)
+        pygame.draw.line(surface, (245, 250, 255, 210), (41, 16), (34, 31), 2)
+        pygame.draw.line(surface, (245, 250, 255, 210), (34, 31), (47, 45), 2)
     return surface
 
 
@@ -205,6 +250,10 @@ def generate_sprites():
     for name, (color, accent) in tower_colors.items():
         save_surface(tower_sprite(name, color, accent), f"sprites/towers/{name}_idle.png")
         save_surface(tower_sprite(name, color, accent, True), f"sprites/towers/{name}_fire.png")
+        save_surface(tower_sprite(name, color, accent, False, 1), f"sprites/towers/{name}_idle_1.png")
+        save_surface(tower_sprite(name, color, accent, False, 2), f"sprites/towers/{name}_idle_2.png")
+        save_surface(tower_sprite(name, color, accent, True, 1), f"sprites/towers/{name}_fire_1.png")
+        save_surface(tower_sprite(name, color, accent, True, 2), f"sprites/towers/{name}_fire_2.png")
 
     enemy_colors = {
         "normal": (210, 60, 60),
@@ -215,12 +264,24 @@ def generate_sprites():
         "armored": (130, 130, 145),
         "flying": (185, 120, 245),
         "boss": (170, 55, 55),
+        "split_child": (255, 145, 70),
+        "shield_cracked": (170, 170, 190),
     }
     for name, color in enemy_colors.items():
-        save_surface(enemy_sprite(name, color, name == "boss", name == "flying"), f"sprites/enemies/{name}.png")
+        is_boss = name == "boss"
+        is_flying = name == "flying"
+        save_surface(enemy_sprite(name, color, is_boss, is_flying), f"sprites/enemies/{name}.png")
+        save_surface(enemy_sprite(name, color, is_boss, is_flying, 1), f"sprites/enemies/{name}_walk_1.png")
+        save_surface(enemy_sprite(name, color, is_boss, is_flying, 2), f"sprites/enemies/{name}_walk_2.png")
+        save_surface(enemy_sprite(name, color, is_boss, is_flying, 3), f"sprites/enemies/{name}_hit.png")
+        if is_boss:
+            save_surface(enemy_sprite(name, (220, 60, 50), is_boss, is_flying, 3), f"sprites/enemies/{name}_rage.png")
 
     for name in ("grass", "grass_dark", "road", "road_edge"):
         save_surface(terrain_tile(name), f"sprites/terrain/{name}.png")
+    for theme in ("forest", "swamp", "snow", "lava"):
+        for name in ("grass", "grass_dark", "road", "road_edge"):
+            save_surface(terrain_tile(name, theme), f"sprites/terrain/{theme}_{name}.png")
     save_surface(marker("spawn"), "sprites/terrain/spawn_gate.png")
     save_surface(marker("base"), "sprites/terrain/base_gate.png")
 
@@ -235,7 +296,7 @@ def generate_sprites():
     for name, color in projectile_colors.items():
         save_surface(projectile(name, color), f"sprites/projectiles/{name}.png")
 
-    for name in ("explosion", "frost_burst", "spark"):
+    for name in ("explosion", "frost_burst", "spark", "shield_break"):
         save_surface(effect(name), f"sprites/effects/{name}.png")
 
 
@@ -250,6 +311,7 @@ def generate_sounds():
         "sounds/enemies/leak.wav": [(130, 0.12)],
         "sounds/enemies/boss_spawn.wav": [(90, 0.12), (130, 0.12)],
         "sounds/enemies/boss_death.wav": [(180, 0.09), (120, 0.09), (80, 0.12)],
+        "sounds/enemies/shield_break.wav": [(520, 0.04), (260, 0.06)],
         "sounds/towers/archer.wav": [(620, 0.035)],
         "sounds/towers/sniper.wav": [(980, 0.045), (520, 0.03)],
         "sounds/towers/machine_gun.wav": [(720, 0.022)],
@@ -266,6 +328,10 @@ def generate_sounds():
     for _ in range(16):
         music.extend([(220, 0.18), (330, 0.18), (294, 0.18), (392, 0.18)])
     write_wav("sounds/music/loop.wav", music, 0.045)
+    boss_music = []
+    for _ in range(18):
+        boss_music.extend([(110, 0.16), (165, 0.16), (147, 0.16), (196, 0.16)])
+    write_wav("sounds/music/boss_loop.wav", boss_music, 0.06)
 
 
 def main():

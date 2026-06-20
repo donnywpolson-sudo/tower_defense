@@ -43,6 +43,30 @@ class MapGenerationTests(unittest.TestCase):
             self.assertGreaterEqual(y, min_y)
             self.assertLessEqual(y, max_y)
 
+    def test_generated_paths_leave_tower_sized_corridors(self):
+        for seed in range(1, 26):
+            with self.subTest(seed=seed):
+                path = mapgen.generate_random_map(seed)["paths"][0]
+
+                self.assertTrue(mapgen.path_has_open_build_corridors(path))
+
+    def test_generated_paths_keep_enough_buildable_space(self):
+        for seed in range(1, 26):
+            with self.subTest(seed=seed):
+                path = mapgen.generate_random_map(seed)["paths"][0]
+
+                self.assertGreaterEqual(
+                    mapgen.count_buildable_sites(path),
+                    mapgen.MIN_BUILDABLE_SITES,
+                )
+
+    def test_common_seeds_do_not_use_fallback_map(self):
+        for seed in range(1, 26):
+            with self.subTest(seed=seed):
+                generated = mapgen.generate_random_map(seed)
+
+                self.assertEqual(generated["name"], "Random Road")
+
 
 if __name__ == "__main__":
     unittest.main()

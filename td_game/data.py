@@ -55,11 +55,421 @@ SHOP_COSTS = {
     "gold": 110,
 }
 
+ROOT_TOWER_IDS = (
+    "archer",
+    "sniper",
+    "machine_gun",
+    "cannon",
+    "frost",
+    "tesla",
+    "barracks",
+    "support",
+)
+
+BRANCH_UNLOCK_LEVEL = 3
+
+LEGACY_TOWER_ALIASES = {
+    "poison": ("archer", "trapline"),
+    "flame": ("cannon", "terraformer"),
+    "mortar": ("cannon", "artillery"),
+    "gold": ("support", "research_lab"),
+}
+
 SHOP_TABS = {
     "Damage": ("archer", "sniper", "machine_gun", "cannon"),
-    "Control": ("frost", "tesla", "poison"),
-    "Military": ("barracks", "flame", "mortar"),
-    "Utility": ("support", "gold"),
+    "Control": ("frost", "tesla"),
+    "Military": ("barracks",),
+    "Utility": ("support",),
+}
+
+FAMILY_INFO = {
+    "archer": ("Ranger Family", "Flexible precision, traps, pets"),
+    "sniper": ("Marksman Family", "Long-range deletion and target painting"),
+    "machine_gun": ("Ballistics Family", "Fire-rate, ammo types, suppression"),
+    "cannon": ("Siege Family", "Splash, armor break, terrain denial"),
+    "frost": ("Cryo Family", "Slow, freeze, shatter, time control"),
+    "tesla": ("Storm Family", "Chain lightning, energy, anti-air"),
+    "barracks": ("Garrison Family", "Guards, engineers, mercenaries"),
+    "support": ("Command Family", "Aura, research, strategy control"),
+}
+
+BRANCH_DEFINITIONS = {
+    "archer": {
+        "deadeye": {
+            "name": "Deadeye Rangers",
+            "short": "DE",
+            "role": "Marks enemies and pressures bosses",
+            "effect_preview": "Marks targets; crits marked/boss enemies.",
+            "mechanics": ("mark", "crit", "boss_pressure"),
+            "tags": ("damage", "mark", "boss"),
+            "color": (120, 230, 120),
+            "tiers": {3: "Deadeye Rangers", 4: "Critline Patrol", 5: "Boss Stalkers"},
+            "descriptions": {
+                3: "Arrows mark enemies and focus priority targets",
+                4: "Marked enemies take stronger critical hits",
+                5: "Boss pressure and mark duration improve",
+            },
+        },
+        "trapline": {
+            "name": "Trapline Rangers",
+            "short": "TR",
+            "role": "Snares, nets, venom road traps",
+            "effect_preview": "Poisons and slows enemies with trap shots.",
+            "mechanics": ("trap", "poison", "slow", "anti_regen"),
+            "tags": ("control", "poison", "trap"),
+            "color": (125, 220, 95),
+            "tiers": {3: "Trapline Rangers", 4: "Venom Netters", 5: "Wildwood Snareline"},
+            "descriptions": {
+                3: "Shots slow and poison enemies briefly",
+                4: "Venom snares weaken swarms and regen enemies",
+                5: "Trapline effects spread to nearby enemies",
+            },
+        },
+        "beastmaster": {
+            "name": "Beastmaster Rangers",
+            "short": "BM",
+            "role": "Pet-style extra hits and holds",
+            "effect_preview": "Falcon/wolf strikes add periodic damage.",
+            "mechanics": ("pet_hit", "hold", "assist"),
+            "tags": ("weird", "pet", "assist"),
+            "color": (175, 210, 105),
+            "tiers": {3: "Beastmaster Rangers", 4: "Wolf Pack", 5: "Bearwarden Patrol"},
+            "descriptions": {
+                3: "Pet strikes add extra physical hits",
+                4: "Wolf attacks briefly hold wounded enemies",
+                5: "Bearwarden hits punish elites near the path",
+            },
+        },
+    },
+    "sniper": {
+        "railgun": {
+            "name": "Railgun Sniper",
+            "short": "RG",
+            "role": "Armor pierce and boss beams",
+            "effect_preview": "Pierces armor and strips shields.",
+            "mechanics": ("pierce", "shield_break", "boss_pressure"),
+            "tags": ("damage", "pierce", "boss"),
+            "color": (205, 230, 245),
+            "tiers": {3: "Railgun Sniper", 4: "Coil Piercer", 5: "Rail Executor"},
+            "descriptions": {
+                3: "Shots pierce armor and shields better",
+                4: "Rail beams expose damaged enemies",
+                5: "Boss and shield damage increase sharply",
+            },
+        },
+        "spotter": {
+            "name": "Spotter Sniper",
+            "short": "SP",
+            "role": "Target paint and shared priority",
+            "effect_preview": "Paints enemies for nearby towers.",
+            "mechanics": ("paint", "shared_targeting", "marked_reward"),
+            "tags": ("utility", "mark", "targeting"),
+            "color": (170, 210, 245),
+            "tiers": {3: "Spotter Sniper", 4: "Weak Point Team", 5: "Forward Observer"},
+            "descriptions": {
+                3: "Painted enemies are preferred by nearby towers",
+                4: "Weak points increase allied damage",
+                5: "Marked kills can grant tactical rewards",
+            },
+        },
+        "time_lag": {
+            "name": "Time-Lag Sniper",
+            "short": "TL",
+            "role": "Delayed damage and echo bullets",
+            "effect_preview": "Stores bonus damage, then detonates.",
+            "mechanics": ("delayed_damage", "echo", "detonate"),
+            "tags": ("weird", "time", "burst"),
+            "color": (190, 170, 245),
+            "tiers": {3: "Time-Lag Sniper", 4: "Echo Bullet", 5: "Chrono Detonator"},
+            "descriptions": {
+                3: "Shots leave delayed echo damage",
+                4: "Echo bullets detonate harder on marked enemies",
+                5: "Stored damage bursts against priority enemies",
+            },
+        },
+    },
+    "machine_gun": {
+        "vulcan": {
+            "name": "Vulcan",
+            "short": "VU",
+            "role": "Spin-up fire-rate DPS",
+            "effect_preview": "Continuous fire increases attack speed.",
+            "mechanics": ("spin_up", "fire_rate", "dps"),
+            "tags": ("damage", "rapid", "swarm"),
+            "color": (255, 225, 90),
+            "tiers": {3: "Vulcan", 4: "Rotary Engine", 5: "Bullet Tempest"},
+            "descriptions": {
+                3: "Sustained fire spins up attack speed",
+                4: "Rotary fire shreds swarms",
+                5: "Tempest rate peaks during long waves",
+            },
+        },
+        "suppression": {
+            "name": "Suppression",
+            "short": "SU",
+            "role": "Slows, pins, panic effects",
+            "effect_preview": "Rapid hits briefly suppress enemies.",
+            "mechanics": ("slow", "pin", "panic"),
+            "tags": ("control", "rapid", "slow"),
+            "color": (220, 205, 120),
+            "tiers": {3: "Suppression Team", 4: "Pinning Fire", 5: "Panic Zone"},
+            "descriptions": {
+                3: "Bullets briefly slow fast enemies",
+                4: "Pinning fire improves control duration",
+                5: "Panic zones disrupt clustered pushes",
+            },
+        },
+        "ammo_fabricator": {
+            "name": "Ammo Fabricator",
+            "short": "AF",
+            "role": "Adaptive AP/toxic/incendiary rounds",
+            "effect_preview": "Rounds adapt to armor, swarms, and regen.",
+            "mechanics": ("adaptive_ammo", "poison", "burn", "pierce"),
+            "tags": ("weird", "ammo", "poison", "burn"),
+            "color": (185, 220, 135),
+            "tiers": {3: "Ammo Fabricator", 4: "Tracer Foundry", 5: "Adaptive Arsenal"},
+            "descriptions": {
+                3: "Ammo adapts against armor and swarms",
+                4: "Tracer rounds mark and weaken targets",
+                5: "Toxic and incendiary rounds rotate in",
+            },
+        },
+    },
+    "cannon": {
+        "artillery": {
+            "name": "Artillery",
+            "short": "AR",
+            "role": "Mortar splash and bombardment",
+            "effect_preview": "Long-range splash with cluster shells.",
+            "mechanics": ("splash", "mortar", "cluster"),
+            "tags": ("damage", "splash", "mortar"),
+            "color": (205, 155, 95),
+            "tiers": {3: "Artillery Battery", 4: "Cluster Shells", 5: "Map Bombardment"},
+            "descriptions": {
+                3: "Mortar-style splash and longer range",
+                4: "Cluster shells hit wider groups",
+                5: "Bombardment punishes dense waves",
+            },
+        },
+        "demolition": {
+            "name": "Demolition",
+            "short": "DM",
+            "role": "Armor crack and shield break",
+            "effect_preview": "Explosions expose armored enemies.",
+            "mechanics": ("armor_break", "shield_break", "vulnerable"),
+            "tags": ("utility", "armor", "splash"),
+            "color": (225, 125, 90),
+            "tiers": {3: "Demolition Crew", 4: "Shield Cracker", 5: "Exposed Core"},
+            "descriptions": {
+                3: "Blast damage cracks armor",
+                4: "Shield cracking improves splash damage",
+                5: "Exposed enemies take more burst damage",
+            },
+        },
+        "terraformer": {
+            "name": "Terraformer",
+            "short": "TF",
+            "role": "Rubble, craters, fire/lava zones",
+            "effect_preview": "Leaves slowing hazard zones.",
+            "mechanics": ("hazard", "burn", "slow", "crater"),
+            "tags": ("weird", "hazard", "burn"),
+            "color": (235, 95, 55),
+            "tiers": {3: "Terraformer", 4: "Lava Craters", 5: "Molten Kill Zone"},
+            "descriptions": {
+                3: "Shells leave short-lived rubble slow zones",
+                4: "Lava craters burn enemies in the area",
+                5: "Molten zones punish clustered ground waves",
+            },
+        },
+    },
+    "frost": {
+        "glacier": {
+            "name": "Glacier",
+            "short": "GL",
+            "role": "Stronger slows and freezes",
+            "effect_preview": "Slows harder and freezes longer.",
+            "mechanics": ("slow", "freeze", "cryo_prison"),
+            "tags": ("control", "freeze", "slow"),
+            "color": (155, 235, 255),
+            "tiers": {3: "Glacier Tower", 4: "Cryo Prison", 5: "Deep Freeze"},
+            "descriptions": {
+                3: "Stronger slow on hit",
+                4: "Cryo prison briefly stops priority enemies",
+                5: "Deep freeze improves control uptime",
+            },
+        },
+        "shatter": {
+            "name": "Shatter",
+            "short": "SH",
+            "role": "Frozen burst damage",
+            "effect_preview": "Frozen enemies burst on heavy hits/death.",
+            "mechanics": ("freeze", "shatter", "burst"),
+            "tags": ("damage", "freeze", "burst"),
+            "color": (205, 250, 255),
+            "tiers": {3: "Shatter Tower", 4: "Ice Fracture", 5: "Crystal Detonation"},
+            "descriptions": {
+                3: "Frozen enemies take bonus burst damage",
+                4: "Fractured enemies splash on death",
+                5: "Crystal detonation improves shatter bursts",
+            },
+        },
+        "time_control": {
+            "name": "Time Control",
+            "short": "TC",
+            "role": "Stasis and slow-motion effects",
+            "effect_preview": "Briefly stops enemies in stasis.",
+            "mechanics": ("stasis", "slow_motion", "rewind"),
+            "tags": ("weird", "time", "control"),
+            "color": (170, 210, 255),
+            "tiers": {3: "Time Control", 4: "Stasis Field", 5: "Rewind Engine"},
+            "descriptions": {
+                3: "Hits briefly stasis slowed enemies",
+                4: "Stasis fields hold groups longer",
+                5: "Rewind engine gives strong wave control",
+            },
+        },
+    },
+    "tesla": {
+        "chain_lightning": {
+            "name": "Chain Lightning",
+            "short": "CL",
+            "role": "Jumps, anti-air, storm pulses",
+            "effect_preview": "Lightning jumps to extra enemies.",
+            "mechanics": ("chain", "anti_air", "storm_pulse"),
+            "tags": ("damage", "chain", "anti_air"),
+            "color": (255, 240, 95),
+            "tiers": {3: "Chain Lightning", 4: "Storm Pulse", 5: "Thunder Web"},
+            "descriptions": {
+                3: "Lightning chains to nearby enemies",
+                4: "Storm pulses improve anti-air control",
+                5: "Thunder web increases chain coverage",
+            },
+        },
+        "battery_grid": {
+            "name": "Battery Grid",
+            "short": "BG",
+            "role": "Overclock nearby towers",
+            "effect_preview": "Stores charge and boosts nearby towers.",
+            "mechanics": ("overclock", "charge", "aura"),
+            "tags": ("utility", "energy", "aura"),
+            "color": (245, 225, 130),
+            "tiers": {3: "Battery Grid", 4: "Charge Relay", 5: "Power Network"},
+            "descriptions": {
+                3: "Stores charge to overclock nearby towers",
+                4: "Charge relay improves buff uptime",
+                5: "Power network boosts linked defenses",
+            },
+        },
+        "magnet_tech": {
+            "name": "Magnet Tech",
+            "short": "MT",
+            "role": "Pulls enemies and EMPs shields",
+            "effect_preview": "Clusters enemies and disrupts shields/haste.",
+            "mechanics": ("pull", "emp", "cluster"),
+            "tags": ("weird", "magnet", "emp"),
+            "color": (210, 190, 255),
+            "tiers": {3: "Magnet Tech", 4: "EMP Coil", 5: "Gravity Storm"},
+            "descriptions": {
+                3: "Magnet hits cluster nearby enemies",
+                4: "EMP strips shields and haste effects",
+                5: "Gravity storm improves clustering control",
+            },
+        },
+    },
+    "barracks": {
+        "champions": {
+            "name": "Champions",
+            "short": "CH",
+            "role": "Melee hold and elite duels",
+            "effect_preview": "Guards hold enemies and damage elites.",
+            "mechanics": ("hold", "melee", "elite_duel"),
+            "tags": ("control", "hold", "melee"),
+            "color": (220, 170, 95),
+            "tiers": {3: "Champion Guard", 4: "Fortress Duelists", 5: "Elite Shield Wall"},
+            "descriptions": {
+                3: "Guards hold ground enemies longer",
+                4: "Duelists damage elites and bosses",
+                5: "Shield wall creates a strong kill zone",
+            },
+        },
+        "engineers": {
+            "name": "Engineers",
+            "short": "EN",
+            "role": "Barricades, spike strips, mines",
+            "effect_preview": "Places periodic road traps.",
+            "mechanics": ("trap", "mine", "repair", "barricade"),
+            "tags": ("utility", "trap", "mine"),
+            "color": (200, 160, 110),
+            "tiers": {3: "Engineer Crew", 4: "Spike Strip", 5: "Minefield Crew"},
+            "descriptions": {
+                3: "Engineers add slowing road traps",
+                4: "Spike strips damage held enemies",
+                5: "Minefield crews improve trap bursts",
+            },
+        },
+        "mercenary_guild": {
+            "name": "Mercenary Guild",
+            "short": "MG",
+            "role": "Bounty, contracts, danger pay",
+            "effect_preview": "Held kills can earn bonus money.",
+            "mechanics": ("bounty", "contract", "danger_pay"),
+            "tags": ("weird", "economy", "hold"),
+            "color": (235, 195, 95),
+            "tiers": {3: "Mercenary Guild", 4: "Contract Board", 5: "Danger Pay Office"},
+            "descriptions": {
+                3: "Held kills can grant bounty money",
+                4: "Contracts improve reward consistency",
+                5: "Danger pay scales during hard waves",
+            },
+        },
+    },
+    "support": {
+        "war_banner": {
+            "name": "War Banner",
+            "short": "WB",
+            "role": "Damage, rate, and range aura",
+            "effect_preview": "Strong direct aura buffs.",
+            "mechanics": ("aura", "damage_buff", "rate_buff", "range_buff"),
+            "tags": ("utility", "aura", "buff"),
+            "color": (245, 225, 145),
+            "tiers": {3: "War Banner", 4: "Command Post", 5: "Battle Standard"},
+            "descriptions": {
+                3: "Aura adds damage and fire-rate buffs",
+                4: "Command post extends range support",
+                5: "Battle standard strengthens all aura stats",
+            },
+        },
+        "research_lab": {
+            "name": "Research Lab",
+            "short": "RL",
+            "role": "Research gain and upgrade discounts",
+            "effect_preview": "Generates research and discounts upgrades.",
+            "mechanics": ("research", "discount", "prototype", "gold"),
+            "tags": ("weird", "economy", "research"),
+            "color": (210, 220, 120),
+            "tiers": {3: "Research Lab", 4: "Prototype Desk", 5: "Adaptive Institute"},
+            "descriptions": {
+                3: "Assists grant small research progress",
+                4: "Prototype discounts help nearby upgrades",
+                5: "Adaptive research improves long-term scaling",
+            },
+        },
+        "signal_tower": {
+            "name": "Signal Tower",
+            "short": "ST",
+            "role": "Shared targeting and threat scan",
+            "effect_preview": "Paints priority enemies for nearby towers.",
+            "mechanics": ("paint", "shared_targeting", "threat_scan"),
+            "tags": ("control", "targeting", "mark"),
+            "color": (180, 215, 245),
+            "tiers": {3: "Signal Tower", 4: "Threat Scanner", 5: "Tactical Grid"},
+            "descriptions": {
+                3: "Signals paint priority enemies",
+                4: "Threat scanner improves shared targeting",
+                5: "Tactical grid improves battlefield control",
+            },
+        },
+    },
 }
 
 MASTERY_UPGRADE_COSTS = {
@@ -406,3 +816,122 @@ TOWER_TYPES = {
 
 
 TARGET_MODES = ["first", "last", "strongest", "weakest", "closest", "flying"]
+
+
+REQUIRED_TOWER_KEYS = (
+    "label",
+    "short",
+    "role",
+    "good_vs",
+    "weakness",
+    "color",
+    "range_color",
+    "projectile_color",
+    "tiers",
+    "descriptions",
+    "paragon",
+)
+
+REQUIRED_BRANCH_KEYS = (
+    "name",
+    "short",
+    "role",
+    "effect_preview",
+    "mechanics",
+    "tags",
+    "color",
+    "tiers",
+    "descriptions",
+)
+
+
+def normalize_tower_type(tower_type):
+    return LEGACY_TOWER_ALIASES.get(tower_type, (tower_type, None))
+
+
+def branch_data(tower_type, branch_key):
+    root_type, legacy_branch = normalize_tower_type(tower_type)
+    selected = branch_key or legacy_branch
+    if selected is None:
+        return None
+    return BRANCH_DEFINITIONS.get(root_type, {}).get(selected)
+
+
+def tower_tier_name(tower_type, level, branch_key=None):
+    branch = branch_data(tower_type, branch_key)
+    if branch and level in branch["tiers"]:
+        return branch["tiers"][level]
+    root_type, _ = normalize_tower_type(tower_type)
+    return TOWER_TYPES[root_type]["tiers"].get(level, TOWER_TYPES[root_type]["label"])
+
+
+def tower_tier_description(tower_type, level, branch_key=None):
+    branch = branch_data(tower_type, branch_key)
+    if branch and level in branch["descriptions"]:
+        return branch["descriptions"][level]
+    root_type, _ = normalize_tower_type(tower_type)
+    return TOWER_TYPES[root_type]["descriptions"].get(level, TOWER_TYPES[root_type]["role"])
+
+
+def _apply_family_metadata():
+    for tower_type in ROOT_TOWER_IDS:
+        family, theme = FAMILY_INFO[tower_type]
+        branches = BRANCH_DEFINITIONS[tower_type]
+        tower = TOWER_TYPES[tower_type]
+        tower["family"] = family
+        tower["family_theme"] = theme
+        tower["branch_options"] = tuple(branches.keys())
+        tower["branch_tiers"] = {key: value["tiers"] for key, value in branches.items()}
+        tower["branch_mechanics"] = {key: value["mechanics"] for key, value in branches.items()}
+        tower["synergies"] = tuple(sorted({tag for branch in branches.values() for tag in branch["tags"]}))
+        tower["tags"] = tuple(sorted({tag for branch in branches.values() for tag in branch["tags"]}))
+
+    for legacy_id, (root_type, branch_key) in LEGACY_TOWER_ALIASES.items():
+        if legacy_id in TOWER_TYPES:
+            TOWER_TYPES[legacy_id]["legacy_alias_for"] = root_type
+            TOWER_TYPES[legacy_id]["legacy_branch"] = branch_key
+
+
+def validate_tower_family_data():
+    errors = []
+    shop_roots = tuple(tower_type for tab in SHOP_TABS.values() for tower_type in tab)
+
+    if tuple(shop_roots) != ROOT_TOWER_IDS:
+        errors.append(f"SHOP_TABS must expose root towers in ROOT_TOWER_IDS order: {shop_roots!r}")
+
+    for legacy_id in LEGACY_TOWER_ALIASES:
+        if legacy_id in shop_roots:
+            errors.append(f"Legacy tower {legacy_id} must not appear in the root shop")
+
+    for tower_type in ROOT_TOWER_IDS:
+        tower = TOWER_TYPES.get(tower_type)
+        if tower is None:
+            errors.append(f"Missing root tower {tower_type}")
+            continue
+        for key in REQUIRED_TOWER_KEYS:
+            if key not in tower:
+                errors.append(f"{tower_type} missing required key {key}")
+
+        branches = BRANCH_DEFINITIONS.get(tower_type, {})
+        if len(branches) != 3:
+            errors.append(f"{tower_type} must have exactly 3 branches")
+        for branch_key, branch in branches.items():
+            for key in REQUIRED_BRANCH_KEYS:
+                if key not in branch:
+                    errors.append(f"{tower_type}.{branch_key} missing branch key {key}")
+            for level in range(BRANCH_UNLOCK_LEVEL, 6):
+                if level not in branch.get("tiers", {}):
+                    errors.append(f"{tower_type}.{branch_key} missing tier name for level {level}")
+                if level not in branch.get("descriptions", {}):
+                    errors.append(f"{tower_type}.{branch_key} missing description for level {level}")
+
+    for legacy_id, (root_type, branch_key) in LEGACY_TOWER_ALIASES.items():
+        if root_type not in ROOT_TOWER_IDS:
+            errors.append(f"Legacy {legacy_id} maps to unknown root {root_type}")
+        if branch_key not in BRANCH_DEFINITIONS.get(root_type, {}):
+            errors.append(f"Legacy {legacy_id} maps to unknown branch {root_type}.{branch_key}")
+
+    return errors
+
+
+_apply_family_metadata()

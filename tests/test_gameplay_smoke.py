@@ -62,9 +62,13 @@ class GameplaySmokeTests(unittest.TestCase):
 
         no_tower_selected = always_visible + [app.get_new_map_button_rect()]
         tower_selected = always_visible + [app.get_upgrade_panel_rect()]
+        branch_tower = app.Tower(100, 100, "archer", data.SHOP_COSTS["archer"])
+        branch_panel_controls = [rect for rect, _ in app.get_branch_button_rects(branch_tower)]
+        branch_panel_controls.extend([app.get_target_button_rect(), app.get_sell_button_rect()])
 
         self._assert_no_rect_overlap(no_tower_selected)
         self._assert_no_rect_overlap(tower_selected)
+        self._assert_no_rect_overlap(branch_panel_controls)
         self.assertLessEqual(max(rect.bottom for rect, _ in app.get_audio_button_rects()), 282)
 
     def _find_valid_build_position(self):

@@ -225,6 +225,14 @@ def has_tower_type(tower_type):
     return any(tower.tower_type == tower_type for tower in towers)
 
 
+def has_tower_mechanic(mechanic):
+    return any(tower.branch_has(mechanic) for tower in towers)
+
+
+def towers_with_mechanic(mechanic):
+    return [tower for tower in towers if tower.branch_has(mechanic)]
+
+
 def apply_synergy_damage(tower_type, enemy, amount, damage_type):
     multiplier = 1.0
     labels = []
@@ -236,6 +244,9 @@ def apply_synergy_damage(tower_type, enemy, amount, damage_type):
         if enemy.barracks_hold_timer > 0 and has_tower_type("barracks"):
             multiplier *= 1.20
             labels.append("BREACH")
+        if enemy.barracks_hold_timer > 0 and has_tower_mechanic("mine"):
+            multiplier *= 1.12
+            labels.append("KILL ZONE")
     elif tower_type == "machine_gun" and enemy.slow_timer > 0 and has_tower_type("frost"):
         multiplier *= 1.15
         labels.append("FOCUS")
@@ -822,6 +833,7 @@ class Tower:
         self.y = y
         self.level = 1
         self.tower_type = None
+        self.selected_branch = None
         self.range = BASE_TOWER_RANGE
         self.fire_rate = 0.55
         self.cooldown = 0
@@ -849,7 +861,7 @@ class Tower:
         self.gold_income_wave = wave
         self.gold_income_earned = 0
         if tower_type:
-            self.tower_type = tower_type
+            self.tower_type, self.selected_branch = normalize_tower_type(tower_type)
             self.level = 2
             self.money_spent = money_spent
             self.apply_weapon_level_stats()
@@ -912,12 +924,44 @@ class Tower:
     def can_upgrade(self):
         if self.level >= MAX_TOWER_LEVEL:
             return False
+        if self.needs_branch_choice():
+            return False
         if self.level < BASE_MAX_TOWER_LEVEL:
             return True
         return (
             research_points >= RESEARCH_UPGRADE_COSTS[self.level]
             and len(towers) >= get_min_towers_for_upgrade(self.level)
         )
+
+    def needs_branch_choice(self):
+        return (
+            self.tower_type in ROOT_TOWER_IDS
+            and self.level == BRANCH_UNLOCK_LEVEL - 1
+            and self.selected_branch is None
+        )
+
+    def branch_data(self):
+        return branch_data(self.tower_type, self.selected_branch)
+
+    def branch_has(self, mechanic):
+        branch = self.branch_data()
+        return branch is not None and mechanic in branch["mechanics"]
+
+    def choose_branch(self, branch_key):
+        if not self.needs_branch_choice():
+            return False
+        if branch_key not in BRANCH_DEFINITIONS.get(self.tower_type, {}):
+            return False
+
+        cost = self.upgrade_cost
+        self.selected_branch = branch_key
+        self.level = BRANCH_UNLOCK_LEVEL
+        self.money_spent += cost
+        self.apply_weapon_level_stats()
+        branch = self.branch_data()
+        if branch:
+            add_floating_text(self.x - 38, self.y - 50, branch["name"], branch["color"])
+        return True
 
     def apply_weapon_level_stats(self):
         if self.tower_type == "archer":
@@ -1003,6 +1047,31 @@ class Tower:
                 self.damage += 4 + (self.level - 3) * 2
                 self.range += 12
                 self.fire_rate = max(0.42, self.fire_rate - 0.055)
+        self.apply_branch_level_stats()
+
+    def apply_branch_level_stats(self):
+        if self.selected_branch is None or self.level < BRANCH_UNLOCK_LEVEL:
+            return
+
+        if self.branch_has("mortar"):
+            self.range += 45
+            self.fire_rate += 0.12
+        if self.branch_has("splash") or self.branch_has("cluster"):
+            self.damage *= 1.08
+        if self.branch_has("armor_break") or self.branch_has("pierce"):
+            self.damage *= 1.10
+        if self.branch_has("slow") or self.branch_has("freeze"):
+            self.range += 10
+        if self.branch_has("chain"):
+            self.range += 12
+        if self.branch_has("overclock") or self.branch_has("aura"):
+            self.range += 18
+        if self.branch_has("research") or self.branch_has("bounty"):
+            self.range += 12
+        if self.branch_has("spin_up"):
+            self.fire_rate = max(0.035, self.fire_rate - 0.015)
+        if self.branch_has("hazard") or self.branch_has("trap"):
+            self.range += 10
 
     def upgrade(self, tower_type):
         if not self.can_upgrade():
@@ -1011,7 +1080,7 @@ class Tower:
         cost = self.upgrade_cost
 
         if self.tower_type is None:
-            self.tower_type = tower_type
+            self.tower_type, self.selected_branch = normalize_tower_type(tower_type)
 
         self.level += 1
         self.money_spent += cost
@@ -1193,10 +1262,19 @@ class Tower:
                 self.mastery_xp += dt * 0.35
                 enemy.slow_timer = max(enemy.slow_timer, 0.3)
                 enemy.barracks_hold_timer = max(enemy.barracks_hold_timer, 0.5)
-                enemy.slow_multiplier = min(enemy.slow_multiplier, 0.58 if self.level < 5 else 0.42)
+                hold_multiplier = 0.58 if self.level < 5 else 0.42
+                if self.branch_has("hold"):
+                    hold_multiplier -= 0.08
+                if self.branch_has("trap"):
+                    hold_multiplier -= 0.05
+                enemy.slow_multiplier = min(enemy.slow_multiplier, max(0.30, hold_multiplier))
                 if self.level >= 4:
                     enemy.vulnerable_timer = max(enemy.vulnerable_timer, 0.5)
                     enemy.damage_multiplier = max(enemy.damage_multiplier, 1.12 if self.level < PARAGON_LEVEL else 1.25)
+                if self.branch_has("mine") and self.level >= BRANCH_UNLOCK_LEVEL:
+                    dealt = enemy.take_damage(self.effective_damage() * dt * 0.85, "explosive", self)
+                    self.total_damage += dealt
+                    self.mastery_xp += dealt * 0.02
                 if self.level >= 5:
                     dealt = enemy.take_damage(self.effective_damage() * dt * 1.5, "melee", self)
                     self.total_damage += dealt
@@ -1213,8 +1291,18 @@ class Tower:
             if self.is_paragon or dist((self.x, self.y), (tower.x, tower.y)) <= self.range:
                 assisted += 1
 
+        if self.branch_has("paint"):
+            valid = [enemy for enemy in enemies if dist((self.x, self.y), (enemy.x, enemy.y)) <= self.effective_range()]
+            if valid:
+                target = max(valid, key=lambda enemy: enemy.progress())
+                target.marked_timer = max(target.marked_timer, 0.45)
+                target.vulnerable_timer = max(target.vulnerable_timer, 0.35)
+                target.damage_multiplier = max(target.damage_multiplier, 1.05)
+
         if assisted:
             self.mastery_xp += dt * min(1.5, assisted * 0.18)
+            if self.branch_has("research"):
+                self.mastery_xp += dt * min(0.8, assisted * 0.08)
 
     def find_target(self):
         valid = []
@@ -1227,6 +1315,10 @@ class Tower:
 
         if not valid:
             return None
+
+        marked = [enemy for enemy in valid if enemy.marked_timer > 0]
+        if marked and (self.tower_type in ("archer", "sniper") or has_tower_mechanic("shared_targeting")):
+            return min(marked, key=lambda e: e.hp)
 
         if self.target_mode == "first":
             return max(valid, key=lambda e: e.progress())
@@ -1262,6 +1354,14 @@ class Tower:
                 if bonus_type == "damage":
                     bonus = max(bonus, 0.07)
                 elif bonus_type == "rate":
+                    bonus = max(bonus, 0.06)
+        for tower in towers:
+            if tower == self or not tower.branch_has("overclock"):
+                continue
+            if tower.is_paragon or dist((self.x, self.y), (tower.x, tower.y)) <= tower.effective_range():
+                if bonus_type == "rate":
+                    bonus = max(bonus, 0.10 if self.tower_type == "machine_gun" else 0.06)
+                elif bonus_type == "damage" and tower.level >= 4:
                     bonus = max(bonus, 0.06)
         return bonus
 
@@ -1605,6 +1705,8 @@ def evaluate_all_mutations():
 
 
 def award_enemy_death_credit(enemy):
+    global money, research_points
+
     killer = enemy.last_damaging_tower
     if killer in towers:
         killer.record_kill(enemy)
@@ -1619,6 +1721,20 @@ def award_enemy_death_credit(enemy):
     for tower in towers:
         if dist((tower.x, tower.y), (enemy.x, enemy.y)) <= CORRUPTION_DEATH_RADIUS:
             tower.nearby_deaths += 1
+        if tower.branch_has("bounty") and dist((tower.x, tower.y), (enemy.x, enemy.y)) <= tower.effective_range():
+            bonus = 2 if enemy.boss else 1
+            money += bonus
+            tower.mastery_xp += 0.25
+            add_floating_text(tower.x - 12, tower.y - 44, f"+${bonus}", (245, 220, 110))
+        if tower.branch_has("research") and dist((tower.x, tower.y), (enemy.x, enemy.y)) <= tower.effective_range():
+            tower.mastery_xp += 0.18
+            if enemy.boss or (tower.nearby_deaths > 0 and tower.nearby_deaths % 14 == 0):
+                research_points += 1
+                add_floating_text(tower.x - 18, tower.y - 44, "+1 Research", (150, 220, 255))
+
+    if enemy.marked_timer > 0 and (has_tower_mechanic("marked_reward") or has_tower_mechanic("research")):
+        money += 1
+        add_floating_text(enemy.x - 12, enemy.y - 46, "+$1 MARK", (245, 230, 140))
 
 
 class Projectile:
@@ -1714,6 +1830,7 @@ class Projectile:
         add_floating_text(self.target.x - 8, self.target.y - 24, str(int(dealt)), damage_text_color(self.tower_type))
         self.source_tower.total_damage += dealt
         self.source_tower.mastery_xp += dealt * 0.02
+        self.apply_branch_effects()
         self.apply_swarm_reaper_cleave()
 
         if self.tower_type == "sniper":
@@ -1835,6 +1952,72 @@ class Projectile:
                 self.source_tower.mastery_xp += dealt * 0.02
                 add_effect(LightningEffect((self.target.x, self.target.y), (enemy.x, enemy.y)))
                 play_sound("chain", 0.05)
+
+    def apply_branch_effects(self):
+        branch = self.source_tower.branch_data()
+        if branch is None:
+            return
+
+        mechanics = set(branch["mechanics"])
+        tower_level = self.source_tower.level
+
+        if mechanics.intersection({"mark", "paint", "shared_targeting"}):
+            mark_time = 2.0 + max(0, tower_level - BRANCH_UNLOCK_LEVEL) * 0.35
+            self.target.marked_timer = max(self.target.marked_timer, mark_time)
+            self.target.vulnerable_timer = max(self.target.vulnerable_timer, 0.8)
+            self.target.damage_multiplier = max(self.target.damage_multiplier, 1.08)
+            add_floating_text(self.target.x - 18, self.target.y - 50, "PAINT", branch["color"])
+
+        if "poison" in mechanics:
+            poison_dps = self.damage * (0.12 + tower_level * 0.025)
+            self.apply_poison(self.target, poison_dps, 2.2 + tower_level * 0.25)
+            if self.target.affix == "regen":
+                self.target.regen_rate *= 0.75
+            add_floating_text(self.target.x - 18, self.target.y - 40, "VENOM", (150, 245, 110))
+
+        if "burn" in mechanics:
+            burn_dps = self.damage * (0.10 + tower_level * 0.025)
+            self.apply_burn(self.target, burn_dps, 1.4 + tower_level * 0.22)
+            add_floating_text(self.target.x - 14, self.target.y - 40, "BURN", (255, 145, 70))
+
+        if mechanics.intersection({"slow", "pin", "trap", "crater", "hazard"}):
+            slow = 0.72 if tower_level < 5 else 0.62
+            self.apply_slow(self.target, slow, 0.9 + tower_level * 0.14)
+            add_floating_text(self.target.x - 12, self.target.y - 38, "SNARE", branch["color"])
+
+        if mechanics.intersection({"stasis", "cryo_prison"}):
+            if self.target.slow_timer > 0 or self.target.freeze_timer > 0:
+                self.target.freeze_timer = max(self.target.freeze_timer, 0.22 if tower_level < 5 else 0.38)
+                add_floating_text(self.target.x - 12, self.target.y - 52, "STASIS", branch["color"])
+
+        if mechanics.intersection({"armor_break", "shield_break", "pierce", "emp"}):
+            if self.target.shield_hits > 0:
+                self.target.shield_hits = max(0, self.target.shield_hits - 1)
+                self.source_tower.shield_breaks += 1
+            self.target.vulnerable_timer = max(self.target.vulnerable_timer, 1.8)
+            self.target.damage_multiplier = max(self.target.damage_multiplier, 1.15)
+            add_floating_text(self.target.x - 16, self.target.y - 48, "EXPOSED", branch["color"])
+
+        if mechanics.intersection({"pet_hit", "echo", "delayed_damage"}):
+            bonus = self.damage * (0.16 if tower_level < 5 else 0.25)
+            dealt = self.target.take_damage(bonus, self.get_damage_type(), self.source_tower)
+            self.source_tower.total_damage += dealt
+            self.source_tower.mastery_xp += dealt * 0.02
+            add_floating_text(self.target.x + 8, self.target.y - 34, f"+{int(dealt)}", branch["color"])
+
+        if "adaptive_ammo" in mechanics:
+            if has_behavior_tag(self.target, "armored"):
+                self.target.shield_hits = max(0, self.target.shield_hits - 1)
+            if has_behavior_tag(self.target, "swarm"):
+                self.apply_swarm_reaper_cleave()
+
+        if "pull" in mechanics:
+            for enemy in self.nearby_enemies(self.target, 70, 3):
+                enemy.x += (self.target.x - enemy.x) * 0.08
+                enemy.y += (self.target.y - enemy.y) * 0.08
+                enemy.slow_timer = max(enemy.slow_timer, 0.45)
+                enemy.slow_multiplier = min(enemy.slow_multiplier, 0.72)
+            add_floating_text(self.target.x - 12, self.target.y - 52, "PULL", branch["color"])
 
     def apply_swarm_reaper_cleave(self):
         if not self.source_tower.has_mutation("swarm_reaper") or not has_behavior_tag(self.target, "swarm"):
@@ -2290,7 +2473,11 @@ def get_upgrade_options(tower):
                 "enabled": money >= cost,
             }
             for tower_type, data in TOWER_TYPES.items()
+            if tower_type in ROOT_TOWER_IDS
         ]
+
+    if tower.needs_branch_choice():
+        return []
 
     data = TOWER_TYPES[tower.tower_type]
     next_level = tower.level + 1
@@ -2303,8 +2490,8 @@ def get_upgrade_options(tower):
         title = f"Mastery Level {next_level}"
         description = f"Costs {research_cost} research, needs {min_towers} towers"
     else:
-        title = data["tiers"][next_level]
-        description = data["descriptions"][next_level]
+        title = tower_tier_name(tower.tower_type, next_level, tower.selected_branch)
+        description = tower_tier_description(tower.tower_type, next_level, tower.selected_branch)
 
     return [
         {
@@ -2318,6 +2505,28 @@ def get_upgrade_options(tower):
             "enabled": money >= cost and tower.can_upgrade(),
         }
     ]
+
+
+def get_branch_options(tower):
+    if tower is None or not tower.needs_branch_choice():
+        return []
+
+    cost = tower.upgrade_cost
+    options = []
+    for branch_key, branch in BRANCH_DEFINITIONS[tower.tower_type].items():
+        options.append(
+            {
+                "branch_key": branch_key,
+                "title": branch["name"],
+                "short": branch["short"],
+                "role": branch["role"],
+                "effect_preview": branch["effect_preview"],
+                "cost": cost,
+                "color": branch["color"],
+                "enabled": money >= cost,
+            }
+        )
+    return options
 
 
 def get_sell_refund(tower):
@@ -2404,8 +2613,17 @@ def get_upgrade_panel_rect():
     return pygame.Rect(MAP_WIDTH + 8, 286, UI_WIDTH - 16, 304)
 
 
+def get_branch_button_rects(tower):
+    panel = get_upgrade_panel_rect()
+    rects = []
+    for index, option in enumerate(get_branch_options(tower)):
+        rect = pygame.Rect(panel.x + 14, panel.y + 112 + index * 35, panel.w - 28, 31)
+        rects.append((rect, option))
+    return rects
+
+
 def visible_available_mutations(tower):
-    if tower is None or not tower.can_add_mutation():
+    if tower is None or tower.needs_branch_choice() or not tower.can_add_mutation():
         return []
     return tower.available_mutations[: max(0, MUTATION_SLOT_LIMIT - len(tower.mutations))]
 
@@ -2433,6 +2651,9 @@ def get_owned_mutation_badge_rects(tower):
 
 
 def get_upgrade_button_rects(tower):
+    if tower is not None and tower.needs_branch_choice():
+        return []
+
     panel = get_upgrade_panel_rect()
     options = get_upgrade_options(tower)
     rects = []
@@ -2471,6 +2692,13 @@ def handle_upgrade_panel_click(pos):
             play_sound("sell", 0.08)
         return True
 
+    for rect, option in get_branch_button_rects(selected_tower):
+        if rect.collidepoint(pos):
+            if option["enabled"] and selected_tower.choose_branch(option["branch_key"]):
+                money -= option["cost"]
+                play_sound("upgrade", 0.08)
+            return True
+
     for rect, mutation_key in get_mutation_button_rects(selected_tower):
         if rect.collidepoint(pos):
             if selected_tower.apply_mutation(mutation_key):
@@ -2500,6 +2728,8 @@ def draw_upgrade_panel():
     data = TOWER_TYPES.get(selected_tower.tower_type)
     if selected_tower.is_paragon:
         tower_name = data["paragon"]
+    elif selected_tower.selected_branch and selected_tower.level >= BRANCH_UNLOCK_LEVEL:
+        tower_name = tower_tier_name(selected_tower.tower_type, selected_tower.level, selected_tower.selected_branch)
     else:
         tower_name = f"{data['label']} Tower" if data else "Basic Tower"
     draw_text(tower_name, panel.x + 14, panel.y + 12, (255, 255, 255))
@@ -2509,16 +2739,21 @@ def draw_upgrade_panel():
         panel.y + 38,
         (210, 210, 190),
     )
+    family = data.get("family", data["label"]) if data else "Basic"
+    branch = selected_tower.branch_data()
+    branch_text = branch["name"] if branch else "Choose branch at Tier 3"
     draw_small_text(
-        f"Kills {selected_tower.kills}  Damage {int(selected_tower.total_damage)}",
+        family,
         panel.x + 14,
         panel.y + 58,
-        (210, 210, 190),
+        (215, 225, 200),
     )
-    draw_small_text(
-        f"Mutations {len(selected_tower.mutations)}/{MUTATION_SLOT_LIMIT}",
-        panel.x + 14,
-        panel.y + 78,
+    compact_branch_text = branch_text if len(branch_text) <= 25 else branch_text[:24] + "."
+    draw_tiny_text(compact_branch_text, panel.x + 14, panel.y + 79, branch["color"] if branch else (230, 220, 150))
+    draw_tiny_text(
+        f"Traits {len(selected_tower.mutations)}/{MUTATION_SLOT_LIMIT}",
+        panel.right - 86,
+        panel.y + 80,
         (215, 225, 200),
     )
     for rect, mutation_key in get_owned_mutation_badge_rects(selected_tower):
@@ -2535,6 +2770,26 @@ def draw_upgrade_panel():
             panel.y + 94,
             (230, 220, 150),
         )
+
+    branch_buttons = get_branch_button_rects(selected_tower)
+    if branch_buttons:
+        draw_small_text("Choose Tier 3 Branch", panel.x + 14, panel.y + 98, (245, 235, 180))
+        for index, (rect, option) in enumerate(branch_buttons):
+            enabled = option["enabled"]
+            fill = (34, 44, 38) if enabled else (48, 38, 38)
+            outline = option["color"] if enabled else (115, 70, 70)
+            text_color = (245, 245, 235) if enabled else (165, 140, 140)
+            pygame.draw.rect(screen, fill, rect)
+            pygame.draw.rect(screen, outline, rect, 2)
+            draw_small_text(f"{index + 1}. {option['title']}", rect.x + 8, rect.y + 4, text_color)
+            draw_tiny_text(f"${option['cost']}", rect.right - 42, rect.y + 7, text_color)
+            preview = option["effect_preview"]
+            if len(preview) > 34:
+                preview = preview[:33] + "."
+            draw_tiny_text(preview, rect.x + 8, rect.y + 19, (215, 220, 200) if enabled else text_color)
+        draw_target_button()
+        draw_sell_button()
+        return
 
     for rect, mutation_key in get_mutation_button_rects(selected_tower):
         mutation = MUTATION_TRAITS[mutation_key]
@@ -2934,6 +3189,18 @@ def draw_sidebar_tooltips():
             return
 
     if selected_tower:
+        for rect, option in get_branch_button_rects(selected_tower):
+            if rect.collidepoint(mouse_pos):
+                lines = [
+                    f"{option['title']} - ${option['cost']}",
+                    option["role"],
+                    option["effect_preview"],
+                ]
+                if not option["enabled"]:
+                    lines.append("Not enough money")
+                draw_tooltip(lines, rect.y - 72)
+                return
+
         for rect, mutation_key in get_owned_mutation_badge_rects(selected_tower):
             if rect.collidepoint(mouse_pos):
                 draw_tooltip(mutation_tooltip_lines(mutation_key, owned=True), rect.y + 26)
@@ -3071,6 +3338,14 @@ def run(argv=None):
                     sfx_enabled = not (sfx_enabled or music_enabled)
                     music_enabled = sfx_enabled
                     update_music_state()
+                if event.key in (pygame.K_1, pygame.K_2, pygame.K_3) and selected_tower:
+                    branch_index = event.key - pygame.K_1
+                    branch_options = get_branch_options(selected_tower)
+                    if branch_index < len(branch_options):
+                        option = branch_options[branch_index]
+                        if option["enabled"] and selected_tower.choose_branch(option["branch_key"]):
+                            money -= option["cost"]
+                            play_sound("upgrade", 0.08)
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                 selected_tower = None

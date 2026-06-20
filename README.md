@@ -4,7 +4,19 @@ A Python/Pygame tower defense game with grid building, weapon tower upgrade tree
 
 ## Run
 
-Double-click `Play Tower Defense.lnk` to start the game without opening a command prompt.
+Double-click `C:\Users\donny\Desktop\Play Tower Defense.exe` to start the game without opening a command prompt.
+
+To rebuild the Desktop launcher:
+
+```powershell
+.\tools\build_desktop_launcher.ps1
+```
+
+To validate the launcher without starting the game:
+
+```powershell
+& "$env:USERPROFILE\Desktop\Play Tower Defense.exe" --check
+```
 
 For development, run:
 
@@ -62,7 +74,7 @@ Do not add ripped assets, trademarked game assets, RuneScape assets, Bloons asse
 
 ```text
 tower_defense.py          # stable Python entry point
-Play Tower Defense.lnk    # player-facing double-click launcher
+tools/build_desktop_launcher.ps1  # builds the Desktop EXE launcher
 td_game/app.py            # main loop, entities, UI, and gameplay integration
 td_game/config.py         # constants and tuning values
 td_game/data.py           # tower, map, upgrade, and mutation data

@@ -1,16 +1,20 @@
 import sys
 import math
-import array
 import argparse
 import pygame
 
+from .assets import draw_sprite_centered, load_image, load_sound
+from .audio import make_tone
 from .config import *
 from .data import *
 from .geometry import dist, distance_segment_to_rect, distance_to_segment
+from .mapgen import generate_random_map
 from .particles import ParticleManager
 from .rendering import RenderOptions, make_renderer
 from .waves import (
     get_boss_count_for_wave as get_boss_count_for_wave_data,
+    get_regular_enemy_count as get_regular_enemy_count_data,
+    get_spawn_interval as get_spawn_interval_data,
     get_wave_affix as get_wave_affix_data,
     get_wave_enemy_kind as get_wave_enemy_kind_data,
     get_wave_label as get_wave_label_data,
@@ -28,6 +32,7 @@ scale = 1
 offset_x = 0
 offset_y = 0
 current_map_index = 0
+active_map = generate_random_map()
 spawn_path_index = 0
 money = STARTING_MONEY
 lives = STARTING_LIVES
@@ -52,6 +57,7 @@ spawned_this_wave = 0
 wave_active = False
 selected_tower = None
 selected_build_type = None
+selected_shop_tab = next(iter(SHOP_TABS))
 endless_mode = False
 stars = 0
 starting_money_bonus_level = 0
@@ -129,11 +135,11 @@ def wrap_text(text, max_chars):
     return lines
 
 def current_paths():
-    return MAPS[current_map_index]["paths"]
+    return active_map.get("paths") or MAPS[current_map_index]["paths"]
 
 
 def current_theme():
-    return MAPS[current_map_index].get("theme", "forest")
+    return active_map.get("theme", MAPS[current_map_index].get("theme", "forest"))
 
 
 def primary_path():
@@ -148,6 +154,14 @@ def all_path_segments():
 
 def can_change_map():
     return wave == 1 and not wave_active and not enemies and not towers and not game_over and not victory
+
+
+def generate_new_active_map(seed=None):
+    global active_map, spawn_path_index
+
+    active_map = generate_random_map(seed)
+    spawn_path_index = 0
+    return active_map
 
 
 def get_research_reward(completed_wave):
@@ -232,51 +246,6 @@ def apply_synergy_damage(tower_type, enemy, amount, damage_type):
     return amount * multiplier, labels
 
 
-def make_tone(frequency, duration=0.08, volume=0.25):
-    sample_rate = 22050
-    sample_count = int(sample_rate * duration)
-    samples = array.array("h")
-    amplitude = int(32767 * volume)
-
-    for index in range(sample_count):
-        fade = 1 - index / max(1, sample_count)
-        value = int(amplitude * fade * math.sin(2 * math.pi * frequency * index / sample_rate))
-        samples.append(value)
-
-    return pygame.mixer.Sound(buffer=samples.tobytes())
-
-
-def load_image(relative_path, scale=None):
-    path = ASSET_DIR / relative_path
-    if not path.exists():
-        return None
-    try:
-        image = pygame.image.load(str(path)).convert_alpha()
-        if scale:
-            image = pygame.transform.scale(image, scale)
-        return image
-    except pygame.error:
-        return None
-
-
-def load_sound(relative_path):
-    path = ASSET_DIR / relative_path
-    if not path.exists():
-        return None
-    try:
-        return pygame.mixer.Sound(str(path))
-    except pygame.error:
-        return None
-
-
-def draw_sprite_centered(sprite, x, y):
-    if sprite is None:
-        return False
-    rect = sprite.get_rect(center=(int(x), int(y)))
-    screen.blit(sprite, rect)
-    return True
-
-
 def get_scaled_sprite(sprite, size):
     if sprite is None:
         return None
@@ -356,12 +325,23 @@ def init_images():
             "cannon": load_image("sprites/projectiles/cannon.png"),
             "frost": load_image("sprites/projectiles/frost.png"),
             "tesla": load_image("sprites/projectiles/tesla.png"),
+            "poison": load_image("sprites/projectiles/poison.png"),
+            "flame": load_image("sprites/projectiles/flame.png"),
+            "mortar": load_image("sprites/projectiles/mortar.png"),
+            "gold": load_image("sprites/projectiles/gold.png"),
         },
         "effects": {
             "explosion": load_image("sprites/effects/explosion.png"),
             "frost_burst": load_image("sprites/effects/frost_burst.png"),
             "spark": load_image("sprites/effects/spark.png"),
             "shield_break": load_image("sprites/effects/shield_break.png"),
+            "smoke": load_image("sprites/effects/smoke.png"),
+            "explosion_ring": load_image("sprites/effects/explosion_ring.png"),
+            "frost_mist": load_image("sprites/effects/frost_mist.png"),
+            "lightning_spark": load_image("sprites/effects/lightning_spark.png"),
+            "poison_cloud": load_image("sprites/effects/poison_cloud.png"),
+            "flame_burst": load_image("sprites/effects/flame_burst.png"),
+            "coin_sparkle": load_image("sprites/effects/coin_sparkle.png"),
         },
     }
 
@@ -377,6 +357,11 @@ def init_sounds():
             "upgrade": load_sound("sounds/ui/upgrade.wav") or make_tone(620, 0.10, 0.22),
             "sell": load_sound("sounds/ui/sell.wav") or make_tone(260, 0.10, 0.18),
             "wave": load_sound("sounds/ui/wave.wav") or make_tone(480, 0.13, 0.20),
+            "wave_fast": load_sound("sounds/ui/wave_fast.wav") or make_tone(920, 0.10, 0.18),
+            "wave_tank": load_sound("sounds/ui/wave_tank.wav") or make_tone(110, 0.14, 0.18),
+            "wave_shield": load_sound("sounds/ui/wave_shield.wav") or make_tone(360, 0.12, 0.18),
+            "wave_flying": load_sound("sounds/ui/wave_flying.wav") or make_tone(1040, 0.14, 0.16),
+            "wave_boss": load_sound("sounds/ui/wave_boss.wav") or make_tone(90, 0.18, 0.20),
             "wave_complete": load_sound("sounds/ui/wave_complete.wav") or make_tone(680, 0.10, 0.18),
             "death": load_sound("sounds/enemies/death.wav") or make_tone(150, 0.08, 0.16),
             "leak": load_sound("sounds/enemies/leak.wav") or make_tone(130, 0.12, 0.16),
@@ -388,6 +373,10 @@ def init_sounds():
             "cannon": load_sound("sounds/towers/cannon.wav") or make_tone(120, 0.12, 0.20),
             "frost": load_sound("sounds/towers/frost.wav") or make_tone(760, 0.07, 0.12),
             "tesla": load_sound("sounds/towers/tesla.wav") or make_tone(1050, 0.04, 0.11),
+            "poison": load_sound("sounds/towers/poison.wav") or make_tone(540, 0.055, 0.10),
+            "flame": load_sound("sounds/towers/flame.wav") or make_tone(210, 0.07, 0.13),
+            "mortar": load_sound("sounds/towers/mortar.wav") or make_tone(85, 0.12, 0.18),
+            "gold": load_sound("sounds/towers/gold.wav") or make_tone(760, 0.06, 0.12),
             "freeze": load_sound("sounds/towers/freeze.wav") or make_tone(900, 0.08, 0.12),
             "chain": load_sound("sounds/towers/chain.wav") or make_tone(1100, 0.04, 0.10),
             "shield_break": load_sound("sounds/enemies/shield_break.wav") or make_tone(420, 0.07, 0.14),
@@ -415,7 +404,45 @@ def play_sound(name, cooldown=0.04):
         return
 
     last_sound_times[name] = now
-    sounds[name].play()
+    try:
+        sounds[name].play()
+    except pygame.error:
+        pass
+
+
+def get_wave_stinger_key(wave_number=None):
+    preview_wave = wave if wave_number is None else wave_number
+    if get_boss_count_for_wave(preview_wave):
+        return "wave_boss"
+
+    kind = get_wave_enemy_kind(preview_wave)
+    affix = get_wave_affix(preview_wave)
+    if kind == "fast" or affix == "haste":
+        return "wave_fast"
+    if kind == "tank":
+        return "wave_tank"
+    if kind in ("shield", "armored") or affix in ("shield", "armored"):
+        return "wave_shield"
+    if kind == "flying":
+        return "wave_flying"
+    return "wave"
+
+
+def play_wave_start_sound():
+    play_sound(get_wave_stinger_key(), 0.35)
+
+
+def tower_sound_cooldown(tower_type):
+    return {
+        "machine_gun": 0.045,
+        "tesla": 0.055,
+        "poison": 0.10,
+        "flame": 0.10,
+        "gold": 0.10,
+        "cannon": 0.12,
+        "mortar": 0.14,
+        "sniper": 0.10,
+    }.get(tower_type, 0.08)
 
 
 def update_music_state():
@@ -555,6 +582,10 @@ class Enemy:
         self.reached_end = False
         self.burn_timer = 0
         self.burn_dps = 0
+        self.burn_source_tower = None
+        self.poison_timer = 0
+        self.poison_dps = 0
+        self.poison_source_tower = None
         self.slow_timer = 0
         self.slow_multiplier = 1
         self.freeze_timer = 0
@@ -573,7 +604,7 @@ class Enemy:
         elif affix == "haste":
             self.speed *= 1.22
         elif affix == "split":
-            self.death_spawns += 2
+            self.death_spawns += 1
 
     def behavior_tags(self):
         tags = set()
@@ -667,8 +698,18 @@ class Enemy:
             self.hp = min(self.max_hp, self.hp + self.regen_rate * dt)
 
         if self.burn_timer > 0:
-            self.take_damage(self.burn_dps * dt)
+            dealt = self.take_damage(self.burn_dps * dt, "fire", self.burn_source_tower)
+            if self.burn_source_tower in towers:
+                self.burn_source_tower.total_damage += dealt
+                self.burn_source_tower.mastery_xp += dealt * 0.01
             self.burn_timer -= dt
+
+        if self.poison_timer > 0:
+            dealt = self.take_damage(self.poison_dps * dt, "poison", self.poison_source_tower)
+            if self.poison_source_tower in towers:
+                self.poison_source_tower.total_damage += dealt
+                self.poison_source_tower.mastery_xp += dealt * 0.01
+            self.poison_timer -= dt
 
         if self.target_index >= len(self.path):
             self.reached_end = True
@@ -729,6 +770,8 @@ class Enemy:
             color = (180, 235, 255)
         if self.burn_timer > 0:
             color = (240, 95, 45)
+        if self.poison_timer > 0:
+            color = (110, 220, 80)
 
         pygame.draw.ellipse(screen, (0, 0, 0, 85), (int(self.x - self.radius), int(self.y + self.radius * 0.58), self.radius * 2, max(4, self.radius // 2)))
         sprite_key = "boss" if self.boss else "split_child" if self.is_split_child else "flying" if self.flying else "shield_cracked" if self.kind == "shield" and self.shield_hits <= 0 else self.kind
@@ -741,13 +784,13 @@ class Enemy:
             sprite = get_animation_frame([frames.get("walk_1"), frames.get("walk_2")]) or frames.get("base")
         if sprite is None:
             sprite = images.get("enemies", {}).get("normal", {}).get("base")
-        drew_sprite = draw_sprite_centered(sprite, self.x, self.y)
+        drew_sprite = draw_sprite_centered(screen, sprite, self.x, self.y)
         if self.hit_flash_timer > 0:
             pygame.draw.circle(screen, (255, 255, 255), (int(self.x), int(self.y)), self.radius + 2, 2)
         if self.shield_break_timer > 0:
             effect_sprite = images.get("effects", {}).get("shield_break")
             if effect_sprite:
-                draw_sprite_centered(effect_sprite, self.x, self.y)
+                draw_sprite_centered(screen, effect_sprite, self.x, self.y)
             else:
                 pygame.draw.circle(screen, (220, 230, 255), (int(self.x), int(self.y)), self.radius + 8, 2)
         if not drew_sprite:
@@ -802,6 +845,9 @@ class Tower:
         self.nearby_deaths = 0
         self.flying_seen_timer = 0
         self.corruption_burst_cooldown = 0
+        self.gold_income_timer = 0
+        self.gold_income_wave = wave
+        self.gold_income_earned = 0
         if tower_type:
             self.tower_type = tower_type
             self.level = 2
@@ -913,14 +959,50 @@ class Tower:
             self.damage += 7 + (self.level - 2) * 2
             self.range += 12
             self.fire_rate = max(0.07, self.fire_rate - 0.13)
+        elif self.tower_type == "poison":
+            if self.level == 2:
+                self.damage = 16
+                self.range = 165
+                self.fire_rate = 0.68
+            else:
+                self.damage += 6 + (self.level - 3) * 3
+                self.range += 16
+                self.fire_rate = max(0.34, self.fire_rate - 0.07)
         elif self.tower_type == "barracks":
             self.damage += 8 + (self.level - 2) * 4
             self.range += 16
             self.fire_rate = 0.25
+        elif self.tower_type == "flame":
+            if self.level == 2:
+                self.damage = 28
+                self.range = 118
+                self.fire_rate = 0.55
+            else:
+                self.damage += 12 + (self.level - 3) * 6
+                self.range += 8
+                self.fire_rate = max(0.28, self.fire_rate - 0.055)
+        elif self.tower_type == "mortar":
+            if self.level == 2:
+                self.damage = 72
+                self.range = 360
+                self.fire_rate = 1.45
+            else:
+                self.damage += 45 + (self.level - 3) * 18
+                self.range += 25
+                self.fire_rate = max(1.05, self.fire_rate - 0.08)
         elif self.tower_type == "support":
             self.damage = 0
             self.range += 35
             self.fire_rate = 0.5
+        elif self.tower_type == "gold":
+            if self.level == 2:
+                self.damage = 10
+                self.range = 145
+                self.fire_rate = 0.78
+            else:
+                self.damage += 4 + (self.level - 3) * 2
+                self.range += 12
+                self.fire_rate = max(0.42, self.fire_rate - 0.055)
 
     def upgrade(self, tower_type):
         if not self.can_upgrade():
@@ -967,15 +1049,27 @@ class Tower:
             self.damage *= 1.7
             self.fire_rate = 0.13
         elif self.tower_type == "tesla":
-            self.damage *= 1.35
-            self.fire_rate = 0.07
+            self.damage *= 1.18
+            self.fire_rate = 0.09
+        elif self.tower_type == "poison":
+            self.damage *= 1.75
+            self.fire_rate = 0.18
         elif self.tower_type == "barracks":
             self.damage *= 2.2
             self.fire_rate = 0.12
+        elif self.tower_type == "flame":
+            self.damage *= 2.0
+            self.fire_rate = 0.18
+        elif self.tower_type == "mortar":
+            self.damage *= 2.35
+            self.fire_rate = 0.85
         elif self.tower_type == "support":
             self.damage = 0
             self.range = max(self.range, 420)
             self.fire_rate = 0.5
+        elif self.tower_type == "gold":
+            self.damage *= 1.7
+            self.fire_rate = 0.35
 
     def apply_mastery_stats(self):
         self.range += 18
@@ -997,11 +1091,23 @@ class Tower:
             self.damage *= 1.20
             self.fire_rate = max(0.08, self.fire_rate - 0.015)
         elif self.tower_type == "tesla":
-            self.damage *= 1.12
-            self.fire_rate = max(0.045, self.fire_rate - 0.004)
+            self.damage *= 1.06
+            self.fire_rate = max(0.075, self.fire_rate - 0.002)
+        elif self.tower_type == "poison":
+            self.damage *= 1.15
+            self.fire_rate = max(0.14, self.fire_rate - 0.018)
         elif self.tower_type == "barracks":
             self.damage *= 1.28
             self.fire_rate = max(0.06, self.fire_rate - 0.01)
+        elif self.tower_type == "flame":
+            self.damage *= 1.18
+            self.fire_rate = max(0.12, self.fire_rate - 0.018)
+        elif self.tower_type == "mortar":
+            self.damage *= 1.25
+            self.fire_rate = max(0.65, self.fire_rate - 0.045)
+        elif self.tower_type == "gold":
+            self.damage *= 1.12
+            self.fire_rate = max(0.22, self.fire_rate - 0.025)
         else:
             self.damage *= 1.25
             self.fire_rate = max(0.09, self.fire_rate - 0.025)
@@ -1015,8 +1121,15 @@ class Tower:
             return True
         return self.is_paragon or self.tower_type == "tesla" and self.level >= 4 or self.tower_type == "sniper" and self.level >= 3
 
+    def minimum_range(self):
+        if self.tower_type != "mortar":
+            return 0
+        return 115 if self.level < PARAGON_LEVEL else 95
+
     def update(self, dt):
         self.update_mutation_timers(dt)
+        if self.tower_type == "gold":
+            self.update_gold_income(dt)
 
         if self.fire_anim_timer > 0:
             self.fire_anim_timer -= dt
@@ -1040,9 +1153,37 @@ class Tower:
                 self.shots_fired += 1
                 data = TOWER_TYPES.get(self.tower_type, {})
                 emit_particles(self.x, self.y, data.get("projectile_color", (245, 220, 80)), 3, 40, 3, 0.18)
-                play_sound(self.tower_type, 0.035 if self.tower_type in ("machine_gun", "tesla") else 0.08)
+                play_sound(self.tower_type, tower_sound_cooldown(self.tower_type))
             self.fire_anim_timer = 0.12
             self.cooldown = self.effective_fire_rate()
+
+    def update_gold_income(self, dt):
+        global money
+
+        if self.gold_income_wave != wave:
+            self.gold_income_wave = wave
+            self.gold_income_earned = 0
+            self.gold_income_timer = 0
+
+        if not wave_active or not enemies:
+            return
+
+        cap = 8 + self.level * 3
+        if self.is_paragon:
+            cap += 12
+        if self.gold_income_earned >= cap:
+            return
+
+        self.gold_income_timer -= dt
+        if self.gold_income_timer > 0:
+            return
+
+        bonus = min(1 + self.level // 3, cap - self.gold_income_earned)
+        money += bonus
+        self.gold_income_earned += bonus
+        self.mastery_xp += 0.2
+        self.gold_income_timer = max(1.8, 4.2 - self.level * 0.28)
+        add_floating_text(self.x - 12, self.y - 42, f"+${bonus}", TOWER_TYPES["gold"]["projectile_color"])
 
     def update_barracks(self, dt):
         for enemy in enemies:
@@ -1078,7 +1219,10 @@ class Tower:
     def find_target(self):
         valid = []
         for enemy in enemies:
-            if self.can_attack(enemy) and dist((self.x, self.y), (enemy.x, enemy.y)) <= self.effective_range():
+            enemy_distance = dist((self.x, self.y), (enemy.x, enemy.y))
+            if enemy_distance < self.minimum_range():
+                continue
+            if self.can_attack(enemy) and enemy_distance <= self.effective_range():
                 valid.append(enemy)
 
         if not valid:
@@ -1144,7 +1288,7 @@ class Tower:
                 sprite = get_animation_frame([frames.get("fire_1"), frames.get("fire_2")], 80) or frames.get("fire")
             else:
                 sprite = get_animation_frame([frames.get("idle_1"), frames.get("idle_2")], 420) or frames.get("idle")
-        if not draw_sprite_centered(sprite, self.x, self.y):
+        if not draw_sprite_centered(screen, sprite, self.x, self.y):
             self.draw_figurine(color)
         if selected_tower == self and (self.tower_type == "support" or self.has_mutation("field_medic")):
             aura_color = (245, 225, 145) if self.tower_type == "support" else MUTATION_TRAITS["field_medic"]["color"]
@@ -1187,24 +1331,40 @@ class Tower:
             pygame.draw.line(screen, (255, 245, 90), (x, y - 20), (x - 8, y - 2), 3)
             pygame.draw.line(screen, (255, 245, 90), (x - 8, y - 2), (x + 9, y - 2), 3)
             pygame.draw.line(screen, (255, 245, 90), (x + 9, y - 2), (x, y + 18), 3)
+        elif self.tower_type == "poison":
+            pygame.draw.circle(screen, (125, 235, 95), (x + 16, y - 5), 7)
+            pygame.draw.rect(screen, (45, 95, 45), (x + 11, y - 3, 10, 17))
+            pygame.draw.circle(screen, (185, 255, 140), (x + 17, y - 8), 3)
         elif self.tower_type == "barracks":
             pygame.draw.rect(screen, (135, 100, 55), (x - 21, y + 5, 12, 18))
             pygame.draw.rect(screen, (135, 100, 55), (x + 9, y + 5, 12, 18))
             pygame.draw.line(screen, (220, 220, 230), (x - 15, y + 3), (x - 15, y - 12), 2)
             pygame.draw.line(screen, (220, 220, 230), (x + 15, y + 3), (x + 15, y - 12), 2)
+        elif self.tower_type == "flame":
+            pygame.draw.polygon(screen, (255, 115, 45), [(x + 8, y - 14), (x + 25, y - 2), (x + 8, y + 10)])
+            pygame.draw.circle(screen, (255, 190, 70), (x + 12, y - 2), 5)
+        elif self.tower_type == "mortar":
+            pygame.draw.rect(screen, (65, 60, 55), (x - 5, y - 18, 15, 32))
+            pygame.draw.line(screen, (90, 85, 75), (x + 2, y - 16), (x + 24, y - 28), 7)
+            pygame.draw.circle(screen, (45, 42, 38), (x + 25, y - 29), 5)
         elif self.tower_type == "support":
             pygame.draw.line(screen, (80, 60, 30), (x - 16, y + 18), (x - 16, y - 20), 3)
             pygame.draw.polygon(screen, (235, 215, 90), [(x - 15, y - 20), (x + 18, y - 12), (x - 15, y - 4)])
+        elif self.tower_type == "gold":
+            pygame.draw.circle(screen, (255, 220, 90), (x + 15, y - 4), 8)
+            pygame.draw.circle(screen, (160, 120, 35), (x + 15, y - 4), 8, 2)
+            draw_tiny_text("$", x + 11, y - 9, (70, 55, 20))
 
 
 class BurstEffect:
-    def __init__(self, x, y, color, max_radius, duration):
+    def __init__(self, x, y, color, max_radius, duration, sprite_name=None):
         self.x = x
         self.y = y
         self.color = color
         self.max_radius = max_radius
         self.duration = duration
         self.timer = duration
+        self.sprite_name = sprite_name
         self.dead = False
 
     def update(self, dt):
@@ -1215,24 +1375,25 @@ class BurstEffect:
     def draw(self):
         progress = 1 - self.timer / self.duration
         radius = max(2, int(self.max_radius * progress))
-        sprite_name = "explosion" if self.color[0] >= 160 and self.color[1] < 180 else "frost_burst"
+        sprite_name = self.sprite_name or ("explosion" if self.color[0] >= 160 and self.color[1] < 180 else "frost_burst")
         sprite = images.get("effects", {}).get(sprite_name)
         if sprite:
             size = max(12, radius * 2)
             scaled = get_scaled_sprite(sprite, (size, size))
-            draw_sprite_centered(scaled, self.x, self.y)
+            draw_sprite_centered(screen, scaled, self.x, self.y)
         else:
             pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), radius, 2)
 
 
 class SparkEffect:
-    def __init__(self, x, y, color, radius, duration):
+    def __init__(self, x, y, color, radius, duration, sprite_name="spark"):
         self.x = x
         self.y = y
         self.color = color
         self.radius = radius
         self.duration = duration
         self.timer = duration
+        self.sprite_name = sprite_name
         self.dead = False
 
     def update(self, dt):
@@ -1243,11 +1404,11 @@ class SparkEffect:
     def draw(self):
         progress = self.timer / self.duration
         radius = max(1, int(self.radius * progress))
-        sprite = images.get("effects", {}).get("spark")
+        sprite = images.get("effects", {}).get(self.sprite_name)
         if sprite:
             size = max(8, radius * 2)
             scaled = get_scaled_sprite(sprite, (size, size))
-            draw_sprite_centered(scaled, self.x, self.y)
+            draw_sprite_centered(screen, scaled, self.x, self.y)
         else:
             pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), radius)
 
@@ -1314,6 +1475,10 @@ def damage_text_color(tower_type):
         "frost": (180, 240, 255),
         "tesla": (160, 210, 255),
         "barracks": (235, 205, 150),
+        "poison": (150, 245, 110),
+        "flame": (255, 150, 80),
+        "mortar": (230, 185, 125),
+        "gold": (255, 225, 95),
     }
     return colors.get(tower_type, (245, 245, 220))
 
@@ -1362,7 +1527,7 @@ def should_show_floating_text(text):
         return True
 
     numeric_text = text.isdigit() or text.startswith(("+$", "$", "CRIT "))
-    noisy_status = text in {"BLOCK", "CHAIN", "SHIELD", "SLOW"}
+    noisy_status = text in {"BLOCK", "CHAIN", "SHIELD", "SLOW", "BURN", "POISON", "TOXIN"}
     if numeric_text or noisy_status:
         return False
 
@@ -1465,7 +1630,10 @@ class Projectile:
         self.damage = tower.effective_damage()
         self.tower_type = tower.tower_type
         self.tower_level = tower.level
-        self.speed = 760 if self.tower_type in ("sniper", "machine_gun", "tesla") else 420
+        if self.tower_type == "mortar":
+            self.speed = 300
+        else:
+            self.speed = 760 if self.tower_type in ("sniper", "machine_gun", "tesla") else 420
         self.dead = False
         self.trail_timer = 0
 
@@ -1497,15 +1665,30 @@ class Projectile:
 
         self.trail_timer = 0.035
 
-        if self.tower_type == "machine_gun":
+        if self.tower_type == "archer":
+            add_effect(SparkEffect(self.x, self.y, (210, 160, 90), 3, 0.10))
+            emit_particles(self.x, self.y, (210, 160, 90), 1, 18, 2, 0.12)
+        elif self.tower_type == "machine_gun":
             add_effect(SparkEffect(self.x, self.y, (255, 230, 120), 3, 0.08))
             emit_particles(self.x, self.y, (255, 230, 120), 1, 22, 2, 0.14)
         elif self.tower_type == "cannon":
-            add_effect(SparkEffect(self.x, self.y, (90, 80, 70), 5, 0.18))
+            add_effect(SparkEffect(self.x, self.y, (90, 80, 70), 6, 0.18, "smoke"))
             emit_particles(self.x, self.y, (90, 80, 70), 2, 24, 3, 0.22)
         elif self.tower_type == "frost":
-            add_effect(SparkEffect(self.x, self.y, (185, 240, 255), 5, 0.18))
+            add_effect(SparkEffect(self.x, self.y, (185, 240, 255), 5, 0.18, "frost_mist"))
             emit_particles(self.x, self.y, (185, 240, 255), 2, 24, 3, 0.22)
+        elif self.tower_type == "poison":
+            add_effect(SparkEffect(self.x, self.y, (125, 235, 95), 5, 0.16, "poison_cloud"))
+            emit_particles(self.x, self.y, (125, 235, 95), 2, 20, 3, 0.18)
+        elif self.tower_type == "flame":
+            add_effect(SparkEffect(self.x, self.y, (255, 115, 45), 5, 0.12, "flame_burst"))
+            emit_particles(self.x, self.y, (255, 115, 45), 2, 32, 3, 0.16)
+        elif self.tower_type == "mortar":
+            add_effect(SparkEffect(self.x, self.y, (95, 85, 70), 8, 0.22, "smoke"))
+            emit_particles(self.x, self.y, (95, 85, 70), 2, 20, 4, 0.24)
+        elif self.tower_type == "gold":
+            add_effect(SparkEffect(self.x, self.y, (255, 220, 90), 5, 0.12, "coin_sparkle"))
+            emit_particles(self.x, self.y, (255, 220, 90), 1, 22, 3, 0.16)
         elif self.tower_type == "tesla":
             jittered = (
                 self.x + math.sin(self.trail_timer + self.x) * 8,
@@ -1515,6 +1698,8 @@ class Projectile:
             emit_particles(self.x, self.y, (255, 245, 90), 1, 28, 2, 0.12)
 
     def hit_target(self):
+        global money
+
         self.spawn_hit_effect()
         data = TOWER_TYPES.get(self.tower_type, {})
         emit_particles(self.target.x, self.target.y, data.get("projectile_color", (245, 220, 80)), 4, 60, 3, 0.24)
@@ -1572,6 +1757,49 @@ class Projectile:
                 self.target.freeze_timer = max(self.target.freeze_timer, 0.45 if self.tower_level < PARAGON_LEVEL else 0.8)
                 add_floating_text(self.target.x - 12, self.target.y - 52, "FREEZE", (220, 250, 255))
                 play_sound("freeze", 0.25)
+        elif self.tower_type == "poison":
+            poison_dps = self.damage * (0.20 + self.tower_level * 0.035)
+            poison_timer = 2.6 + self.tower_level * 0.35
+            self.apply_poison(self.target, poison_dps, poison_timer)
+            add_floating_text(self.target.x - 18, self.target.y - 38, "POISON", (150, 245, 110))
+            if self.tower_level >= 4:
+                spread_limit = 4 if self.tower_level >= PARAGON_LEVEL else 2
+                for enemy in self.nearby_enemies(self.target, 58 + self.tower_level * 4, spread_limit):
+                    self.apply_poison(enemy, poison_dps * 0.45, poison_timer * 0.75)
+                    add_floating_text(enemy.x - 18, enemy.y - 38, "TOXIN", (150, 245, 110))
+        elif self.tower_type == "flame":
+            burn_dps = self.damage * (0.24 + self.tower_level * 0.035)
+            burn_timer = 1.7 + self.tower_level * 0.25
+            self.apply_burn(self.target, burn_dps, burn_timer)
+            add_floating_text(self.target.x - 12, self.target.y - 38, "BURN", (255, 145, 70))
+            splash_radius = 34 + self.tower_level * 5
+            splash_damage = self.damage * (0.25 if self.tower_level < 5 else 0.38)
+            for enemy in self.nearby_enemies(self.target, splash_radius, 4):
+                if enemy.flying:
+                    continue
+                dealt = enemy.take_damage(splash_damage, "fire", self.source_tower)
+                self.apply_burn(enemy, burn_dps * 0.55, burn_timer * 0.7)
+                add_floating_text(enemy.x - 8, enemy.y - 24, str(int(dealt)), damage_text_color(self.tower_type))
+                self.source_tower.total_damage += dealt
+                self.source_tower.mastery_xp += dealt * 0.02
+        elif self.tower_type == "mortar":
+            splash_radius = 68 + self.tower_level * 11
+            splash_damage = self.damage * (0.55 if self.tower_level < 5 else 0.82)
+            trigger_screen_shake(0.10, 4)
+            for enemy in self.nearby_enemies(self.target, splash_radius, 8):
+                adjusted_damage, labels = apply_synergy_damage(self.tower_type, enemy, splash_damage, "explosive")
+                dealt = enemy.take_damage(adjusted_damage, "explosive", self.source_tower)
+                for label_index, label in enumerate(labels):
+                    add_floating_text(enemy.x - 16, enemy.y - 38 - label_index * 12, label, (255, 245, 150))
+                add_floating_text(enemy.x - 8, enemy.y - 24, str(int(dealt)), damage_text_color(self.tower_type))
+                self.source_tower.total_damage += dealt
+                self.source_tower.mastery_xp += dealt * 0.02
+        elif self.tower_type == "gold":
+            if self.target.hp <= self.target.max_hp * 0.5:
+                bonus = 1 if self.tower_level < PARAGON_LEVEL else 2
+                money += bonus
+                self.source_tower.gold_income_earned += bonus
+                add_floating_text(self.target.x + 4, self.target.y - 40, f"+${bonus}", TOWER_TYPES["gold"]["projectile_color"])
         elif self.tower_type == "tesla":
             if self.tower_level < 3:
                 return
@@ -1587,8 +1815,8 @@ class Projectile:
                 chain_damage = self.damage * 0.75
                 chain_range = 120
             if self.tower_level >= PARAGON_LEVEL:
-                chain_count = 4
-                chain_damage = self.damage * 0.6
+                chain_count = 3
+                chain_damage = self.damage * 0.45
                 chain_range = 125
             if (self.target.slow_timer > 0 or self.target.freeze_timer > 0) and has_tower_type("frost"):
                 chain_count = min(4, chain_count + 1)
@@ -1628,10 +1856,14 @@ class Projectile:
     def get_damage_type(self):
         if self.tower_type == "sniper":
             return "pierce"
-        if self.tower_type == "cannon":
+        if self.tower_type in ("cannon", "mortar"):
             return "explosive"
         if self.tower_type == "tesla":
             return "electric"
+        if self.tower_type == "poison":
+            return "poison"
+        if self.tower_type == "flame":
+            return "fire"
         return "physical"
 
     def spawn_hit_effect(self):
@@ -1640,12 +1872,22 @@ class Projectile:
         elif self.tower_type == "machine_gun":
             add_effect(SparkEffect(self.target.x, self.target.y, (255, 225, 100), 7, 0.08))
         elif self.tower_type == "cannon":
-            add_effect(BurstEffect(self.target.x, self.target.y, (185, 120, 70), 34 + self.tower_level * 7, 0.28))
+            add_effect(SparkEffect(self.target.x, self.target.y, (100, 92, 82), 18, 0.26, "smoke"))
+            add_effect(BurstEffect(self.target.x, self.target.y, (185, 120, 70), 34 + self.tower_level * 7, 0.28, "explosion_ring"))
         elif self.tower_type == "frost":
-            add_effect(BurstEffect(self.target.x, self.target.y, (120, 220, 255), 24 + self.tower_level * 4, 0.26))
+            add_effect(BurstEffect(self.target.x, self.target.y, (120, 220, 255), 24 + self.tower_level * 4, 0.26, "frost_mist"))
         elif self.tower_type == "tesla":
             add_effect(LightningEffect((self.x, self.y), (self.target.x, self.target.y)))
-            add_effect(SparkEffect(self.target.x, self.target.y, (255, 255, 150), 12, 0.16))
+            add_effect(SparkEffect(self.target.x, self.target.y, (255, 255, 150), 12, 0.16, "lightning_spark"))
+        elif self.tower_type == "poison":
+            add_effect(BurstEffect(self.target.x, self.target.y, (110, 220, 85), 24 + self.tower_level * 4, 0.25, "poison_cloud"))
+        elif self.tower_type == "flame":
+            add_effect(BurstEffect(self.target.x, self.target.y, (255, 105, 45), 28 + self.tower_level * 5, 0.22, "flame_burst"))
+        elif self.tower_type == "mortar":
+            add_effect(SparkEffect(self.target.x, self.target.y, (100, 92, 82), 24, 0.32, "smoke"))
+            add_effect(BurstEffect(self.target.x, self.target.y, (170, 130, 85), 52 + self.tower_level * 10, 0.32, "explosion_ring"))
+        elif self.tower_type == "gold":
+            add_effect(SparkEffect(self.target.x, self.target.y, (255, 225, 90), 10, 0.16, "coin_sparkle"))
         else:
             add_effect(BurstEffect(self.target.x, self.target.y, (245, 220, 80), 18, 0.18))
 
@@ -1662,6 +1904,12 @@ class Projectile:
     def apply_burn(self, enemy, dps, timer):
         enemy.burn_timer = max(enemy.burn_timer, timer)
         enemy.burn_dps = max(enemy.burn_dps, dps)
+        enemy.burn_source_tower = self.source_tower
+
+    def apply_poison(self, enemy, dps, timer):
+        enemy.poison_timer = max(enemy.poison_timer, timer)
+        enemy.poison_dps = max(enemy.poison_dps, dps)
+        enemy.poison_source_tower = self.source_tower
 
     def apply_slow(self, enemy, multiplier, timer):
         enemy.slow_timer = max(enemy.slow_timer, timer)
@@ -1673,7 +1921,7 @@ class Projectile:
         sprite = images.get("projectiles", {}).get(self.tower_type)
         draw_glow(self.x, self.y, color, 12, 44)
 
-        if draw_sprite_centered(sprite, self.x, self.y):
+        if draw_sprite_centered(screen, sprite, self.x, self.y):
             return
 
         if self.tower_type == "archer":
@@ -1701,23 +1949,59 @@ class Projectile:
             pygame.draw.circle(screen, color, (int(self.x), int(self.y)), 5)
 
 
+def terrain_palette():
+    palettes = {
+        "forest": {
+            "grass": (23, 36, 28),
+            "grass_patch": (36, 57, 35),
+            "grass_patch_dark": (18, 29, 23),
+            "road_shadow": (36, 31, 25),
+            "road_edge": (74, 57, 38),
+            "road": (132, 102, 66),
+            "road_highlight": (166, 130, 82),
+        },
+        "swamp": {
+            "grass": (22, 39, 35),
+            "grass_patch": (42, 66, 45),
+            "grass_patch_dark": (16, 29, 29),
+            "road_shadow": (31, 42, 31),
+            "road_edge": (58, 72, 43),
+            "road": (102, 118, 64),
+            "road_highlight": (132, 148, 82),
+        },
+        "snow": {
+            "grass": (174, 198, 202),
+            "grass_patch": (214, 232, 232),
+            "grass_patch_dark": (130, 158, 166),
+            "road_shadow": (46, 56, 66),
+            "road_edge": (62, 73, 86),
+            "road": (101, 114, 128),
+            "road_highlight": (146, 160, 172),
+        },
+        "lava": {
+            "grass": (35, 27, 27),
+            "grass_patch": (70, 38, 31),
+            "grass_patch_dark": (24, 20, 21),
+            "road_shadow": (24, 20, 20),
+            "road_edge": (73, 38, 32),
+            "road": (112, 63, 42),
+            "road_highlight": (168, 86, 44),
+        },
+    }
+    return palettes.get(current_theme(), palettes["forest"])
+
+
 def draw_terrain():
-    pygame.draw.rect(screen, (26, 34, 28), (0, 0, MAP_WIDTH, HEIGHT))
-    theme = current_theme()
-    grass = images.get("terrain", {}).get(f"{theme}_grass") or images.get("terrain", {}).get("grass")
-    grass_dark = images.get("terrain", {}).get(f"{theme}_grass_dark") or images.get("terrain", {}).get("grass_dark")
-    if grass:
-        for col in range(0, MAP_WIDTH, BUILD_TILE_SIZE):
-            for row in range(0, HEIGHT, BUILD_TILE_SIZE):
-                tile = grass_dark if (col // BUILD_TILE_SIZE + row // BUILD_TILE_SIZE) % 5 == 0 and grass_dark else grass
-                screen.blit(tile, (col, row))
-    else:
-        for col in range(0, MAP_WIDTH, 72):
-            for row in range(BUILD_GRID_TOP, HEIGHT, 72):
-                shade = 8 + ((col * 3 + row * 5) % 18)
-                color = (24 + shade, 42 + shade // 2, 28 + shade // 3)
-                patch = pygame.Rect(col + 10, row + 8, 34 + (col // 72) % 18, 18 + (row // 72) % 14)
-                pygame.draw.rect(screen, color, patch, border_radius=6)
+    palette = terrain_palette()
+    pygame.draw.rect(screen, palette["grass"], (0, 0, MAP_WIDTH, HEIGHT))
+
+    for col in range(0, MAP_WIDTH, 72):
+        for row in range(BUILD_GRID_TOP, HEIGHT, 72):
+            patch_w = 30 + (col // 72) % 16
+            patch_h = 13 + (row // 72) % 9
+            patch = pygame.Rect(col + 12, row + 9, patch_w, patch_h)
+            color = palette["grass_patch_dark"] if (col // 72 + row // 72) % 3 == 0 else palette["grass_patch"]
+            pygame.draw.rect(screen, color, patch, border_radius=6)
 
 
 def draw_spawn_exit_markers():
@@ -1728,24 +2012,29 @@ def draw_spawn_exit_markers():
         end_marker = (max(18, min(MAP_WIDTH - 18, end[0])), end[1])
         spawn_sprite = images.get("terrain", {}).get("spawn")
         base_sprite = images.get("terrain", {}).get("base")
-        if not draw_sprite_centered(spawn_sprite, start_marker[0], start_marker[1]):
+        if not draw_sprite_centered(screen, spawn_sprite, start_marker[0], start_marker[1]):
             pygame.draw.circle(screen, (70, 185, 95), start_marker, 18)
             pygame.draw.circle(screen, (15, 40, 25), start_marker, 11)
             pygame.draw.polygon(screen, (235, 245, 210), [(start_marker[0] - 5, start_marker[1] - 8), (start_marker[0] + 8, start_marker[1]), (start_marker[0] - 5, start_marker[1] + 8)])
 
-        if not draw_sprite_centered(base_sprite, end_marker[0], end_marker[1]):
+        if not draw_sprite_centered(screen, base_sprite, end_marker[0], end_marker[1]):
             pygame.draw.circle(screen, (190, 75, 75), end_marker, 20)
             pygame.draw.circle(screen, (55, 20, 20), end_marker, 12)
             pygame.draw.rect(screen, (235, 210, 190), (end_marker[0] - 8, end_marker[1] - 8, 16, 16), 2)
 
 
 def draw_path():
-    theme = current_theme()
-    road = images.get("terrain", {}).get(f"{theme}_road") or images.get("terrain", {}).get("road")
-    road_color = road.get_at((8, 8))[:3] if road else (126, 98, 62)
-    road_edge = images.get("terrain", {}).get(f"{theme}_road_edge") or images.get("terrain", {}).get("road_edge")
-    edge_color = road_edge.get_at((8, 8))[:3] if road_edge else (72, 58, 42)
+    palette = terrain_palette()
+    edge_color = palette["road_edge"]
+    road_color = palette["road"]
+    highlight_color = palette["road_highlight"]
+    shadow_color = palette["road_shadow"]
     for path in current_paths():
+        for i in range(len(path) - 1):
+            pygame.draw.line(screen, shadow_color, path[i], path[i + 1], PATH_WIDTH + 22)
+        for point in path:
+            pygame.draw.circle(screen, shadow_color, point, PATH_WIDTH // 2 + 11)
+
         for i in range(len(path) - 1):
             pygame.draw.line(screen, edge_color, path[i], path[i + 1], PATH_WIDTH + 14)
         for point in path:
@@ -1757,7 +2046,7 @@ def draw_path():
             pygame.draw.circle(screen, road_color, point, PATH_WIDTH // 2)
 
         for i in range(len(path) - 1):
-            pygame.draw.line(screen, (145, 115, 72), path[i], path[i + 1], 4)
+            pygame.draw.line(screen, highlight_color, path[i], path[i + 1], 5)
 
     draw_spawn_exit_markers()
 
@@ -1843,6 +2132,16 @@ def get_boss_count_for_wave(wave_number=None):
     return get_boss_count_for_wave_data(preview_wave)
 
 
+def get_enemies_per_wave(wave_number=None):
+    preview_wave = wave if wave_number is None else wave_number
+    return get_regular_enemy_count_data(preview_wave) + get_boss_count_for_wave(preview_wave)
+
+
+def get_spawn_interval(wave_number=None):
+    preview_wave = wave if wave_number is None else wave_number
+    return get_spawn_interval_data(preview_wave)
+
+
 def get_wave_enemy_kind(wave_number=None):
     preview_wave = wave if wave_number is None else wave_number
     return get_wave_enemy_kind_data(preview_wave)
@@ -1871,7 +2170,7 @@ def apply_wave_affix(enemy):
     elif affix == "haste":
         enemy.speed *= 1.22
     elif affix == "split":
-        enemy.death_spawns += 1 if wave < 15 else 2
+        enemy.death_spawns += 1
     return enemy
 
 
@@ -2045,11 +2344,11 @@ def sell_tower(tower):
 def get_shop_button_rects():
     rects = []
     start_x = MAP_WIDTH + 14
-    start_y = 118
+    start_y = 158
     button_w = 120
-    button_h = 32
-    gap = 8
-    for index, tower_type in enumerate(TOWER_TYPES):
+    button_h = 29
+    gap = 4
+    for index, tower_type in enumerate(current_shop_towers()):
         col = index % 2
         row = index // 2
         rect = pygame.Rect(start_x + col * (button_w + gap), start_y + row * (button_h + gap), button_w, button_h)
@@ -2057,37 +2356,47 @@ def get_shop_button_rects():
     return rects
 
 
-def get_map_button_rects():
+def current_shop_towers():
+    return SHOP_TABS.get(selected_shop_tab, next(iter(SHOP_TABS.values())))
+
+
+def get_shop_tab_button_rects():
     rects = []
     start_x = MAP_WIDTH + 14
-    start_y = 506
-    button_w = 120
-    button_h = 28
-    gap = 8
-    for index, game_map in enumerate(MAPS):
-        col = index % 2
-        row = index // 2
-        rect = pygame.Rect(start_x + col * (button_w + gap), start_y + row * (button_h + gap), button_w, button_h)
-        rects.append((rect, index, game_map))
+    start_y = 126
+    button_w = 60
+    button_h = 24
+    gap = 4
+    for index, tab_name in enumerate(SHOP_TABS):
+        rect = pygame.Rect(start_x + index * (button_w + gap), start_y, button_w, button_h)
+        rects.append((rect, tab_name))
     return rects
 
 
+def get_map_button_rects():
+    return []
+
+
+def get_new_map_button_rect():
+    return pygame.Rect(MAP_WIDTH + 14, 552, UI_WIDTH - 28, 30)
+
+
 def get_pause_button_rect():
-    return pygame.Rect(MAP_WIDTH + 14, 76, 90, 30)
+    return pygame.Rect(MAP_WIDTH + 14, 76, 90, 28)
 
 
 def get_speed_button_rects():
     return [
-        (pygame.Rect(MAP_WIDTH + 112, 76, 42, 30), 1.0),
-        (pygame.Rect(MAP_WIDTH + 160, 76, 42, 30), 2.0),
-        (pygame.Rect(MAP_WIDTH + 208, 76, 42, 30), 3.0),
+        (pygame.Rect(MAP_WIDTH + 112, 76, 42, 28), 1.0),
+        (pygame.Rect(MAP_WIDTH + 160, 76, 42, 28), 2.0),
+        (pygame.Rect(MAP_WIDTH + 208, 76, 42, 28), 3.0),
     ]
 
 
 def get_audio_button_rects():
     return [
-        (pygame.Rect(MAP_WIDTH + 14, 272, 120, 24), "sfx"),
-        (pygame.Rect(MAP_WIDTH + 142, 272, 120, 24), "music"),
+        (pygame.Rect(MAP_WIDTH + 14, 260, 120, 22), "sfx"),
+        (pygame.Rect(MAP_WIDTH + 142, 260, 120, 22), "music"),
     ]
 
 
@@ -2106,6 +2415,19 @@ def get_mutation_button_rects(tower):
     rects = []
     for index, mutation_key in enumerate(visible_available_mutations(tower)[:2]):
         rect = pygame.Rect(panel.x + 14, panel.y + 104 + index * 40, panel.w - 28, 36)
+        rects.append((rect, mutation_key))
+    return rects
+
+
+def get_owned_mutation_badge_rects(tower):
+    if tower is None:
+        return []
+
+    panel = get_upgrade_panel_rect()
+    badge_x = panel.x + 126
+    rects = []
+    for index, mutation_key in enumerate(tower.mutations[:MUTATION_SLOT_LIMIT]):
+        rect = pygame.Rect(badge_x + index * 42, panel.y + 76, 36, 18)
         rects.append((rect, mutation_key))
     return rects
 
@@ -2199,10 +2521,8 @@ def draw_upgrade_panel():
         panel.y + 78,
         (215, 225, 200),
     )
-    badge_x = panel.x + 126
-    for index, mutation_key in enumerate(selected_tower.mutations):
+    for rect, mutation_key in get_owned_mutation_badge_rects(selected_tower):
         mutation = MUTATION_TRAITS[mutation_key]
-        rect = pygame.Rect(badge_x + index * 42, panel.y + 76, 36, 18)
         pygame.draw.rect(screen, (34, 38, 34), rect)
         pygame.draw.rect(screen, mutation["color"], rect, 1)
         draw_tiny_text(mutation["short"], rect.x + 5, rect.y + 3, mutation["color"])
@@ -2304,18 +2624,25 @@ def start_wave():
         spawn_timer = 0
         spawned_this_wave = 0
         spawn_path_index = 0
-        play_sound("wave", 0.2)
+        play_wave_start_sound()
 
 
 def handle_command_click(pos):
     global endless_mode, stars, starting_money_bonus_level, tower_damage_bonus_level
     global victory, wave, wave_active, spawn_timer, spawned_this_wave
-    global selected_build_type, selected_tower, current_map_index, paused, game_speed
+    global selected_build_type, selected_shop_tab, selected_tower, paused, game_speed
     global sfx_enabled, music_enabled
 
     if get_start_wave_button_rect().collidepoint(pos):
         start_wave()
         return True
+
+    for rect, tab_name in get_shop_tab_button_rects():
+        if rect.collidepoint(pos):
+            selected_shop_tab = tab_name
+            selected_build_type = None
+            selected_tower = None
+            return True
 
     for rect, tower_type in get_shop_button_rects():
         if rect.collidepoint(pos):
@@ -2341,13 +2668,11 @@ def handle_command_click(pos):
                 update_music_state()
             return True
 
-    if selected_tower is None:
-        for rect, map_index, game_map in get_map_button_rects():
-            if rect.collidepoint(pos):
-                if can_change_map():
-                    current_map_index = map_index
-                selected_build_type = None
-                return True
+    if selected_tower is None and get_new_map_button_rect().collidepoint(pos):
+        if can_change_map():
+            generate_new_active_map()
+        selected_build_type = None
+        return True
 
     if victory and get_endless_button_rect().collidepoint(pos):
         endless_mode = True
@@ -2407,6 +2732,14 @@ def draw_tooltip(lines, y):
         draw_tiny_text(line, rect.x + 8, rect.y + 8 + index * 16, color)
 
 
+def mutation_tooltip_lines(mutation_key, owned=False):
+    mutation = MUTATION_TRAITS[mutation_key]
+    lines = [f"Mutation: {mutation['label']}"]
+    lines.extend(wrap_text(mutation["description"], 32))
+    lines.append("Active on this tower" if owned else "Click to add this trait")
+    return lines
+
+
 def draw_sidebar_background():
     pygame.draw.rect(screen, (20, 24, 22), (MAP_WIDTH, 0, UI_WIDTH, HEIGHT))
     pygame.draw.line(screen, (75, 82, 70), (MAP_WIDTH, 0), (MAP_WIDTH, HEIGHT), 2)
@@ -2425,24 +2758,31 @@ def draw_start_and_speed_controls():
     pause_rect = get_pause_button_rect()
     pygame.draw.rect(screen, (42, 48, 58), pause_rect)
     pygame.draw.rect(screen, (110, 150, 190), pause_rect, 2)
-    draw_small_text("Resume" if paused else "Pause", pause_rect.x + 16, pause_rect.y + 8, (225, 235, 245))
+    draw_small_text("Resume" if paused else "Pause", pause_rect.x + 16, pause_rect.y + 6, (225, 235, 245))
 
     for speed_rect, speed in get_speed_button_rects():
         active = game_speed == speed
         pygame.draw.rect(screen, (54, 58, 42) if active else (36, 38, 34), speed_rect)
         pygame.draw.rect(screen, (220, 200, 95) if active else (95, 95, 80), speed_rect, 2)
-        draw_small_text(f"{int(speed)}x", speed_rect.x + 10, speed_rect.y + 8, (245, 235, 180))
+        draw_small_text(f"{int(speed)}x", speed_rect.x + 10, speed_rect.y + 6, (245, 235, 180))
 
     for audio_rect, key in get_audio_button_rects():
         active = sfx_enabled if key == "sfx" else music_enabled
         pygame.draw.rect(screen, (38, 52, 45) if active else (48, 38, 38), audio_rect)
         pygame.draw.rect(screen, (100, 190, 125) if active else (150, 85, 85), audio_rect, 2)
         label = "SFX ON" if key == "sfx" and active else "SFX OFF" if key == "sfx" else "Music ON" if active else "Music OFF"
-        draw_tiny_text(label, audio_rect.x + 12, audio_rect.y + 6, (235, 240, 220))
+        draw_tiny_text(label, audio_rect.x + 12, audio_rect.y + 5, (235, 240, 220))
 
 
 def draw_tower_shop():
-    draw_small_text("Build Towers", MAP_WIDTH + 14, 100, (235, 235, 220))
+    draw_small_text("Build Towers", MAP_WIDTH + 14, 108, (235, 235, 220))
+
+    for rect, tab_name in get_shop_tab_button_rects():
+        active = selected_shop_tab == tab_name
+        pygame.draw.rect(screen, (42, 55, 45) if active else (32, 36, 33), rect)
+        pygame.draw.rect(screen, (105, 200, 120) if active else (90, 95, 82), rect, 2)
+        draw_tiny_text(tab_name, rect.x + 5, rect.y + 7, (235, 245, 225) if active else (185, 185, 168))
+
     for rect, tower_type in get_shop_button_rects():
         data = TOWER_TYPES[tower_type]
         selected = selected_build_type == tower_type
@@ -2455,16 +2795,16 @@ def draw_tower_shop():
         sprite = images.get("towers", {}).get(tower_type, {}).get("idle")
         if sprite:
             mini = get_scaled_sprite(sprite, (24, 24))
-            draw_sprite_centered(mini, rect.x + 17, rect.y + 16)
+            draw_sprite_centered(screen, mini, rect.x + 17, rect.y + 16)
             text_x = rect.x + 32
         else:
             text_x = rect.x + 7
-        draw_tiny_text(data["label"], text_x, rect.y + 5, (245, 245, 235) if affordable else (165, 140, 140))
-        draw_tiny_text(f"${SHOP_COSTS[tower_type]}", rect.right - 38, rect.y + 18, (225, 225, 205) if affordable else (150, 130, 130))
+        draw_tiny_text(data["label"], text_x, rect.y + 4, (245, 245, 235) if affordable else (165, 140, 140))
+        draw_tiny_text(f"${SHOP_COSTS[tower_type]}", rect.right - 38, rect.y + 16, (225, 225, 205) if affordable else (150, 130, 130))
 
 
 def draw_wave_timeline():
-    y = 292 if selected_tower is None else 202
+    y = 306 if selected_tower is None else 202
     draw_small_text("Wave Timeline", MAP_WIDTH + 14, y, (235, 235, 220))
     for index in range(6):
         preview_wave = wave + index
@@ -2483,7 +2823,7 @@ def draw_wave_timeline():
             sprite = images.get("towers", {}).get(tower_type, {}).get("idle")
             if sprite:
                 mini = get_scaled_sprite(sprite, (18, 18))
-                draw_sprite_centered(mini, MAP_WIDTH + 218 + icon_index * 20, row_y + 8)
+                draw_sprite_centered(screen, mini, MAP_WIDTH + 218 + icon_index * 20, row_y + 8)
 
 
 def draw_wave_warning_panel():
@@ -2501,7 +2841,7 @@ def draw_wave_warning_panel():
         sprite = images.get("towers", {}).get(tower_type, {}).get("idle")
         if sprite:
             mini = get_scaled_sprite(sprite, (30, 30))
-            draw_sprite_centered(mini, panel.right - 84 + index * 28, panel.y + 39)
+            draw_sprite_centered(screen, mini, panel.right - 84 + index * 28, panel.y + 39)
 
     if money >= 1000:
         pulse = 120 + int(80 * abs(math.sin(pygame.time.get_ticks() * 0.006)))
@@ -2538,19 +2878,22 @@ def draw_boss_health_bar():
 
 
 def draw_map_selector():
-    draw_small_text("Maps", MAP_WIDTH + 14, 486, (235, 235, 220))
+    draw_small_text("Map", MAP_WIDTH + 14, 488, (235, 235, 220))
     locked = not can_change_map()
     if locked:
-        draw_tiny_text("Locked after building or starting", MAP_WIDTH + 68, 489, (155, 155, 140))
+        draw_tiny_text("Locked after building or starting", MAP_WIDTH + 58, 491, (155, 155, 140))
 
-    for rect, map_index, game_map in get_map_button_rects():
-        active = current_map_index == map_index
-        fill = (42, 55, 45) if active else (32, 36, 33)
-        outline = (105, 200, 120) if active else (90, 95, 82)
-        pygame.draw.rect(screen, fill, rect)
-        pygame.draw.rect(screen, outline, rect, 2)
-        color = (235, 245, 225) if not locked or active else (145, 145, 132)
-        draw_tiny_text(game_map["name"].replace(" Road", ""), rect.x + 7, rect.y + 8, color)
+    seed_text = str(active_map.get("seed", "fallback"))
+    draw_tiny_text("Random road", MAP_WIDTH + 14, 516, (235, 245, 225))
+    draw_tiny_text(f"Seed: {seed_text}", MAP_WIDTH + 14, 536, (190, 200, 180))
+
+    rect = get_new_map_button_rect()
+    fill = (38, 62, 44) if not locked else (32, 36, 33)
+    outline = (105, 200, 120) if not locked else (90, 95, 82)
+    color = (235, 245, 225) if not locked else (145, 145, 132)
+    pygame.draw.rect(screen, fill, rect)
+    pygame.draw.rect(screen, outline, rect, 2)
+    draw_tiny_text("New Random Map", rect.x + 62, rect.y + 9, color)
 
 
 def draw_sidebar_tooltips():
@@ -2562,9 +2905,20 @@ def draw_sidebar_tooltips():
         "cannon": "Synergy: shatters Frozen or Barracks-held enemies",
         "frost": "Synergy: boosts Cannon, Machine Gun, Tesla",
         "tesla": "Synergy: extra chain from Frost slow/freeze",
+        "poison": "Synergy: softens tanks and bosses over time",
         "barracks": "Synergy: holds enemies for Cannon",
+        "flame": "Synergy: burns grouped ground enemies",
+        "mortar": "Synergy: huge splash, cannot hit close targets",
         "support": "Synergy: aura buffs nearby towers",
+        "gold": "Synergy: earns money while waves are active",
     }
+
+    for rect, tab_name in get_shop_tab_button_rects():
+        if rect.collidepoint(mouse_pos):
+            lines = [f"{tab_name} Towers"]
+            lines.extend(TOWER_TYPES[tower_type]["label"] for tower_type in SHOP_TABS[tab_name])
+            draw_tooltip(lines, 232)
+            return
 
     for rect, tower_type in get_shop_button_rects():
         if rect.collidepoint(mouse_pos):
@@ -2574,21 +2928,20 @@ def draw_sidebar_tooltips():
                 data["role"],
                 f"Good: {data['good_vs']}",
                 f"Weak: {data['weakness']}",
-                synergy_text[tower_type],
+                synergy_text.get(tower_type, data["role"]),
             ]
             draw_tooltip(lines, 232)
             return
 
     if selected_tower:
+        for rect, mutation_key in get_owned_mutation_badge_rects(selected_tower):
+            if rect.collidepoint(mouse_pos):
+                draw_tooltip(mutation_tooltip_lines(mutation_key, owned=True), rect.y + 26)
+                return
+
         for rect, mutation_key in get_mutation_button_rects(selected_tower):
             if rect.collidepoint(mouse_pos):
-                mutation = MUTATION_TRAITS[mutation_key]
-                lines = [
-                    f"Free mutation: {mutation['label']}",
-                    mutation["description"],
-                    "Earned from this tower's behavior",
-                ]
-                draw_tooltip(lines, rect.y - 82)
+                draw_tooltip(mutation_tooltip_lines(mutation_key), rect.y - 82)
                 return
 
         for rect, option in get_upgrade_button_rects(selected_tower):
@@ -2639,7 +2992,7 @@ def reset_game():
     global money, lives, score, research_points, wave, game_over, victory
     global enemies, towers, projectiles, effects
     global spawn_timer, spawned_this_wave, wave_active, selected_tower
-    global endless_mode, run_stars_awarded, selected_build_type, paused, game_speed, spawn_path_index
+    global endless_mode, run_stars_awarded, selected_build_type, selected_shop_tab, paused, game_speed, spawn_path_index
     global screen_shake_timer, screen_shake_strength, boss_warning_timer
 
     money = STARTING_MONEY + starting_money_bonus_level * 25
@@ -2660,9 +3013,10 @@ def reset_game():
     wave_active = False
     selected_tower = None
     selected_build_type = None
+    selected_shop_tab = next(iter(SHOP_TABS))
     paused = False
     game_speed = 1.0
-    spawn_path_index = 0
+    generate_new_active_map()
     screen_shake_timer = 0
     screen_shake_strength = 0
     boss_warning_timer = 0
@@ -2689,7 +3043,7 @@ def run(argv=None):
     update_window_transform()
 
     while running:
-        frame_dt = clock.tick(60) / 1000
+        frame_dt = min(clock.tick(60) / 1000, 0.05)
         dt = 0 if paused else frame_dt * game_speed
         if screen_shake_timer > 0:
             screen_shake_timer = max(0, screen_shake_timer - frame_dt)
@@ -2709,6 +3063,8 @@ def run(argv=None):
                 update_window_transform()
 
             if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
                 if event.key == pygame.K_r:
                     reset_game()
                 if event.key == pygame.K_m:
@@ -2749,9 +3105,8 @@ def run(argv=None):
                             selected_tower = None
 
         if not game_over and not victory and not paused:
-            regular_enemies_per_wave = BASE_ENEMIES_PER_WAVE + wave * ENEMIES_PER_WAVE_GROWTH
-            enemies_per_wave = regular_enemies_per_wave + get_boss_count_for_wave()
-            spawn_interval = max(MIN_SPAWN_INTERVAL, 0.62 - wave * 0.012)
+            enemies_per_wave = get_enemies_per_wave()
+            spawn_interval = get_spawn_interval()
 
             if wave_active:
                 spawn_timer += dt

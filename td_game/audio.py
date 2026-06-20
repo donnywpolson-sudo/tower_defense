@@ -16,16 +16,3 @@ def make_tone(frequency, duration=0.08, volume=0.25):
         samples.append(value)
 
     return pygame.mixer.Sound(buffer=samples.tobytes())
-
-
-class SoundThrottle:
-    def __init__(self):
-        self.last_sound_times = {}
-
-    def can_play(self, name, cooldown):
-        now = pygame.time.get_ticks()
-        last = self.last_sound_times.get(name, -100000)
-        if now - last < cooldown * 1000:
-            return False
-        self.last_sound_times[name] = now
-        return True

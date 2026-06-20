@@ -6,3 +6,6 @@ __pycache__/
 .git_invalid_backup/
 *.log
 *.tmp
+*.zip
+tools/_asset_downloads/
+.asset_cache/

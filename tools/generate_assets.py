@@ -17,7 +17,6 @@ def ensure_dirs():
         "sprites/terrain",
         "sprites/projectiles",
         "sprites/effects",
-        "sprites/ui",
         "sounds/towers",
         "sounds/enemies",
         "sounds/ui",
@@ -78,14 +77,37 @@ def tower_sprite(tower_type, color, accent, firing=False, frame=0):
         pygame.draw.line(surface, accent, (33, 22), (22, 42), 4)
         if firing:
             pygame.draw.circle(surface, (255, 255, 170), (24, 22), 18, 2)
+    elif tower_type == "poison":
+        pygame.draw.circle(surface, (42, 95, 48), (34, 16), 7)
+        pygame.draw.rect(surface, (48, 105, 52), (29, 18, 10, 18))
+        pygame.draw.circle(surface, accent, (35, 13), 3)
+        if firing:
+            pygame.draw.circle(surface, (165, 255, 120), (38, 13), 7, 2)
     elif tower_type == "barracks":
         pygame.draw.rect(surface, (130, 95, 55), (3, 25, 13, 18))
         pygame.draw.rect(surface, (130, 95, 55), (32, 25, 13, 18))
         pygame.draw.line(surface, (220, 220, 230), (9, 24), (9, 8), 2)
         pygame.draw.line(surface, (220, 220, 230), (38, 24), (38, 8), 2)
+    elif tower_type == "flame":
+        pygame.draw.polygon(surface, (120, 48, 32), [(29, 13), (45, 20), (29, 27)])
+        pygame.draw.polygon(surface, accent, [(32, 14), (46, 20), (32, 26)])
+        if firing:
+            pygame.draw.polygon(surface, (255, 220, 90), [(37, 12), (48, 20), (37, 28)])
+    elif tower_type == "mortar":
+        pygame.draw.rect(surface, (58, 55, 50), (19, 15, 13, 22))
+        pygame.draw.line(surface, (86, 78, 68), (25, 16), (42, 6), 7)
+        pygame.draw.circle(surface, (42, 38, 34), (43, 6), 5)
+        if firing:
+            pygame.draw.circle(surface, (120, 110, 95), (43, 6), 8, 2)
     elif tower_type == "support":
         pygame.draw.line(surface, (80, 60, 30), (9, 42), (9, 5), 3)
         pygame.draw.polygon(surface, accent, [(10, 5), (42, 13), (10, 23)])
+    elif tower_type == "gold":
+        pygame.draw.circle(surface, accent, (36, 16), 8)
+        pygame.draw.circle(surface, (135, 100, 32), (36, 16), 8, 2)
+        pygame.draw.line(surface, (255, 245, 160), (36, 10), (36, 22), 2)
+        if firing:
+            pygame.draw.circle(surface, (255, 250, 170), (36, 16), 12, 2)
     return surface
 
 
@@ -98,12 +120,42 @@ def enemy_sprite(kind, color, boss=False, flying=False, frame=0):
     if frame == 3:
         color = tuple(min(255, c + 70) for c in color)
     shadow(surface, (center, center + 2), radius)
-    pygame.draw.circle(surface, color, (center, center + wobble), radius)
-    pygame.draw.circle(surface, tuple(min(255, c + 45) for c in color), (center - radius // 3, center - radius // 3), max(3, radius // 3))
-    pygame.draw.circle(surface, (35, 35, 35), (center - radius // 3, center - 2), 2)
-    pygame.draw.circle(surface, (35, 35, 35), (center + radius // 3, center - 2), 2)
+    body_radius = radius - 5 if kind == "split_child" else radius
+    body_rect = pygame.Rect(center - body_radius, center - body_radius + wobble, body_radius * 2, body_radius * 2)
+
+    if kind in ("tank", "armored") or boss:
+        pygame.draw.rect(surface, color, body_rect, border_radius=5 if boss else 3)
+        pygame.draw.rect(surface, tuple(max(0, c - 45) for c in color), body_rect, 2, border_radius=5 if boss else 3)
+    else:
+        pygame.draw.circle(surface, color, (center, center + wobble), body_radius)
+        pygame.draw.circle(surface, tuple(min(255, c + 45) for c in color), (center - body_radius // 3, center - body_radius // 3), max(3, body_radius // 3))
+
+    eye_y = center - 2 + wobble
+    pygame.draw.circle(surface, (35, 35, 35), (center - body_radius // 3, eye_y), 2)
+    pygame.draw.circle(surface, (35, 35, 35), (center + body_radius // 3, eye_y), 2)
+
+    if kind == "normal":
+        pygame.draw.line(surface, (215, 215, 185), (center + 5, center + 4), (center + 13, center + 12), 2)
+    elif kind == "fast":
+        pygame.draw.line(surface, (245, 230, 245), (3, center + 6), (11, center + 5), 2)
+        pygame.draw.line(surface, (245, 230, 245), (2, center + 11), (10, center + 10), 2)
+        pygame.draw.line(surface, (40, 35, 38), (center - 4, center + 9), (center - 9, center + 16), 2)
+        pygame.draw.line(surface, (40, 35, 38), (center + 5, center + 9), (center + 11, center + 15), 2)
+    elif kind in ("swarm", "split_child"):
+        pygame.draw.circle(surface, tuple(min(255, c + 35) for c in color), (center - 8, center + 8), 4)
+        pygame.draw.circle(surface, tuple(min(255, c + 20) for c in color), (center + 8, center + 8), 4)
+    elif kind == "tank":
+        pygame.draw.rect(surface, (95, 62, 42), (center - 9, center - 11, 18, 5), border_radius=2)
+        pygame.draw.line(surface, (70, 45, 35), (center - 12, center + 12), (center + 12, center + 12), 3)
     if kind in ("shield", "armored") or boss:
         pygame.draw.circle(surface, (225, 225, 245), (center, center), radius + 4, 2)
+    if kind == "shield":
+        shield_points = [(center + 1, center - 13), (center + 14, center - 6), (center + 9, center + 12), (center + 1, center + 17), (center - 7, center + 12), (center - 12, center - 6)]
+        pygame.draw.polygon(surface, (210, 220, 238), shield_points)
+        pygame.draw.polygon(surface, (80, 90, 110), shield_points, 2)
+    if kind == "armored":
+        pygame.draw.rect(surface, (190, 195, 210), (center - 10, center - 16, 20, 7), border_radius=2)
+        pygame.draw.line(surface, (80, 85, 95), (center - 10, center - 9), (center + 10, center - 9), 2)
     if kind == "shield_cracked":
         pygame.draw.circle(surface, (225, 225, 245), (center, center), radius + 4, 2)
         pygame.draw.line(surface, (45, 45, 65), (center - 6, center - 10), (center + 2, center + 1), 2)
@@ -113,6 +165,7 @@ def enemy_sprite(kind, color, boss=False, flying=False, frame=0):
         pygame.draw.arc(surface, (230, 220, 255), (center + 7, center - 12, radius, 18), 3.4, 6.4, 3)
     if boss:
         pygame.draw.circle(surface, (255, 210, 90), (center, center), radius + 9, 2)
+        pygame.draw.polygon(surface, (255, 210, 90), [(center - 14, center - 24), (center - 6, center - 34), (center, center - 24), (center + 8, center - 34), (center + 14, center - 24)])
     return surface
 
 
@@ -184,6 +237,12 @@ def projectile(kind, color):
     if kind == "archer":
         pygame.draw.line(surface, color, (3, 15), (21, 8), 3)
         pygame.draw.polygon(surface, (230, 230, 190), [(20, 8), (15, 5), (17, 12)])
+    elif kind == "sniper":
+        pygame.draw.line(surface, color, (2, 12), (22, 12), 2)
+        pygame.draw.circle(surface, (255, 255, 255), (19, 12), 3)
+    elif kind == "machine_gun":
+        pygame.draw.rect(surface, color, (8, 10, 9, 4), border_radius=2)
+        pygame.draw.circle(surface, (255, 245, 160), (18, 12), 3)
     elif kind == "cannon":
         pygame.draw.circle(surface, color, (12, 12), 7)
         pygame.draw.circle(surface, (50, 45, 38), (9, 9), 2)
@@ -195,6 +254,20 @@ def projectile(kind, color):
         pygame.draw.line(surface, color, (4, 12), (11, 5), 3)
         pygame.draw.line(surface, color, (11, 5), (9, 14), 3)
         pygame.draw.line(surface, color, (9, 14), (20, 8), 3)
+    elif kind == "poison":
+        pygame.draw.circle(surface, (82, 175, 75), (12, 12), 7)
+        pygame.draw.circle(surface, color, (9, 9), 3)
+        pygame.draw.circle(surface, (180, 255, 130), (15, 14), 2)
+    elif kind == "flame":
+        pygame.draw.polygon(surface, color, [(5, 18), (10, 5), (18, 12), (13, 21)])
+        pygame.draw.polygon(surface, (255, 225, 85), [(9, 16), (11, 8), (16, 13), (13, 18)])
+    elif kind == "mortar":
+        pygame.draw.circle(surface, color, (12, 12), 8)
+        pygame.draw.rect(surface, (55, 48, 40), (7, 7, 9, 9), border_radius=2)
+    elif kind == "gold":
+        pygame.draw.circle(surface, color, (12, 12), 7)
+        pygame.draw.circle(surface, (145, 105, 30), (12, 12), 7, 2)
+        pygame.draw.line(surface, (255, 245, 160), (12, 7), (12, 17), 2)
     else:
         pygame.draw.circle(surface, color, (12, 12), 4)
     return surface
@@ -218,6 +291,35 @@ def effect(kind):
         pygame.draw.line(surface, (245, 250, 255, 210), (31, 32), (24, 49), 3)
         pygame.draw.line(surface, (245, 250, 255, 210), (41, 16), (34, 31), 2)
         pygame.draw.line(surface, (245, 250, 255, 210), (34, 31), (47, 45), 2)
+    elif kind == "smoke":
+        for center, radius, alpha in [((24, 36), 15, 80), ((36, 30), 18, 65), ((30, 22), 12, 55)]:
+            pygame.draw.circle(surface, (95, 90, 82, alpha), center, radius)
+    elif kind == "explosion_ring":
+        pygame.draw.circle(surface, (255, 220, 105, 210), (32, 32), 26, 3)
+        pygame.draw.circle(surface, (230, 105, 45, 150), (32, 32), 18, 3)
+        pygame.draw.circle(surface, (95, 60, 38, 120), (32, 32), 30, 2)
+    elif kind == "frost_mist":
+        for radius, alpha in [(27, 70), (20, 100), (11, 150)]:
+            pygame.draw.circle(surface, (185, 245, 255, alpha), (32, 32), radius)
+        pygame.draw.line(surface, (235, 255, 255, 180), (18, 32), (46, 32), 2)
+        pygame.draw.line(surface, (235, 255, 255, 180), (32, 18), (32, 46), 2)
+    elif kind == "lightning_spark":
+        pygame.draw.line(surface, (255, 255, 170, 230), (31, 7), (20, 30), 4)
+        pygame.draw.line(surface, (255, 255, 170, 230), (20, 30), (37, 30), 4)
+        pygame.draw.line(surface, (255, 255, 170, 230), (37, 30), (27, 57), 4)
+        pygame.draw.circle(surface, (160, 220, 255, 120), (32, 32), 23, 2)
+    elif kind == "poison_cloud":
+        for center, radius, alpha in [((24, 33), 16, 115), ((36, 30), 18, 105), ((31, 21), 13, 90)]:
+            pygame.draw.circle(surface, (100, 220, 80, alpha), center, radius)
+        pygame.draw.circle(surface, (190, 255, 130, 170), (38, 24), 4)
+    elif kind == "flame_burst":
+        pygame.draw.polygon(surface, (255, 95, 35, 190), [(19, 53), (25, 20), (32, 8), (40, 24), (47, 53)])
+        pygame.draw.polygon(surface, (255, 210, 85, 220), [(25, 52), (31, 25), (36, 17), (40, 52)])
+    elif kind == "coin_sparkle":
+        pygame.draw.circle(surface, (255, 220, 80, 180), (32, 32), 15)
+        pygame.draw.circle(surface, (150, 110, 30, 180), (32, 32), 15, 2)
+        pygame.draw.line(surface, (255, 255, 180, 230), (32, 9), (32, 55), 2)
+        pygame.draw.line(surface, (255, 255, 180, 230), (9, 32), (55, 32), 2)
     return surface
 
 
@@ -244,8 +346,12 @@ def generate_sprites():
         "cannon": ((150, 105, 70), (255, 180, 90)),
         "frost": ((90, 175, 225), (180, 245, 255)),
         "tesla": ((230, 210, 65), (255, 245, 90)),
+        "poison": ((105, 190, 85), (165, 255, 120)),
         "barracks": ((185, 145, 85), (220, 220, 230)),
+        "flame": ((225, 95, 45), (255, 170, 70)),
+        "mortar": ((115, 105, 90), (205, 180, 130)),
         "support": ((200, 185, 105), (235, 215, 90)),
+        "gold": ((220, 180, 65), (255, 225, 90)),
     }
     for name, (color, accent) in tower_colors.items():
         save_surface(tower_sprite(name, color, accent), f"sprites/towers/{name}_idle.png")
@@ -292,11 +398,27 @@ def generate_sprites():
         "cannon": (80, 70, 60),
         "frost": (175, 240, 255),
         "tesla": (255, 245, 90),
+        "poison": (125, 235, 95),
+        "flame": (255, 120, 45),
+        "mortar": (105, 95, 80),
+        "gold": (255, 220, 90),
     }
     for name, color in projectile_colors.items():
         save_surface(projectile(name, color), f"sprites/projectiles/{name}.png")
 
-    for name in ("explosion", "frost_burst", "spark", "shield_break"):
+    for name in (
+        "explosion",
+        "frost_burst",
+        "spark",
+        "shield_break",
+        "smoke",
+        "explosion_ring",
+        "frost_mist",
+        "lightning_spark",
+        "poison_cloud",
+        "flame_burst",
+        "coin_sparkle",
+    ):
         save_surface(effect(name), f"sprites/effects/{name}.png")
 
 
@@ -306,6 +428,11 @@ def generate_sounds():
         "sounds/ui/upgrade.wav": [(520, 0.05), (760, 0.07)],
         "sounds/ui/sell.wav": [(320, 0.07), (220, 0.05)],
         "sounds/ui/wave.wav": [(420, 0.08), (580, 0.08)],
+        "sounds/ui/wave_fast.wav": [(760, 0.035), (960, 0.035), (1160, 0.045)],
+        "sounds/ui/wave_tank.wav": [(115, 0.08), (95, 0.08)],
+        "sounds/ui/wave_shield.wav": [(620, 0.035), (330, 0.04), (260, 0.04)],
+        "sounds/ui/wave_flying.wav": [(880, 0.06), (1180, 0.06)],
+        "sounds/ui/wave_boss.wav": [(82, 0.08), (120, 0.055), (74, 0.055)],
         "sounds/ui/wave_complete.wav": [(520, 0.06), (680, 0.06), (880, 0.08)],
         "sounds/enemies/death.wav": [(160, 0.05), (90, 0.06)],
         "sounds/enemies/leak.wav": [(130, 0.12)],
@@ -318,6 +445,10 @@ def generate_sounds():
         "sounds/towers/cannon.wav": [(95, 0.10)],
         "sounds/towers/frost.wav": [(760, 0.05), (1020, 0.03)],
         "sounds/towers/tesla.wav": [(1150, 0.025), (870, 0.025)],
+        "sounds/towers/poison.wav": [(430, 0.04), (360, 0.05)],
+        "sounds/towers/flame.wav": [(190, 0.045), (260, 0.045)],
+        "sounds/towers/mortar.wav": [(72, 0.12), (105, 0.05)],
+        "sounds/towers/gold.wav": [(880, 0.035), (1320, 0.045)],
         "sounds/towers/freeze.wav": [(900, 0.08)],
         "sounds/towers/chain.wav": [(1200, 0.02), (980, 0.02)],
     }

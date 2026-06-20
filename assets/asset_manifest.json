@@ -1,0 +1,924 @@
+{
+  "assets": {
+    "sounds/enemies/boss_death.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/enemies/boss_death.ogg",
+      "original_path": "Audio/impactPlate_heavy_004.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/enemies/boss_spawn.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/enemies/boss_spawn.ogg",
+      "original_path": "Audio/impactWood_heavy_001.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/enemies/death.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/enemies/death.ogg",
+      "original_path": "Audio/impactPunch_medium_000.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/enemies/leak.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/enemies/leak.ogg",
+      "original_path": "Audio/impactSoft_heavy_000.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/enemies/shield_break.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/enemies/shield_break.ogg",
+      "original_path": "Audio/impactMetal_medium_000.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/towers/archer.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/archer.ogg",
+      "original_path": "Audio/impactWood_light_000.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/towers/cannon.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/cannon.ogg",
+      "original_path": "Audio/impactSoft_heavy_004.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/towers/chain.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/chain.ogg",
+      "original_path": "Audio/glitch_002.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Interface Sounds",
+      "source_page": "https://kenney.nl/assets/interface-sounds"
+    },
+    "sounds/towers/flame.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/flame.ogg",
+      "original_path": "Audio/impactGeneric_light_000.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/towers/freeze.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/freeze.ogg",
+      "original_path": "Audio/impactGlass_medium_000.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/towers/frost.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/frost.ogg",
+      "original_path": "Audio/impactGlass_light_002.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/towers/gold.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/gold.ogg",
+      "original_path": "Audio/confirmation_001.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Interface Sounds",
+      "source_page": "https://kenney.nl/assets/interface-sounds"
+    },
+    "sounds/towers/machine_gun.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/machine_gun.ogg",
+      "original_path": "Audio/impactTin_medium_000.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/towers/mortar.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/mortar.ogg",
+      "original_path": "Audio/impactSoft_heavy_001.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/towers/poison.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/poison.ogg",
+      "original_path": "Audio/impactSoft_medium_000.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/towers/sniper.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/sniper.ogg",
+      "original_path": "Audio/impactMetal_medium_002.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/towers/tesla.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/towers/tesla.ogg",
+      "original_path": "Audio/glitch_001.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Interface Sounds",
+      "source_page": "https://kenney.nl/assets/interface-sounds"
+    },
+    "sounds/ui/build.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/ui/build.ogg",
+      "original_path": "Audio/select_001.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Interface Sounds",
+      "source_page": "https://kenney.nl/assets/interface-sounds"
+    },
+    "sounds/ui/sell.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/ui/sell.ogg",
+      "original_path": "Audio/back_001.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Interface Sounds",
+      "source_page": "https://kenney.nl/assets/interface-sounds"
+    },
+    "sounds/ui/upgrade.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/ui/upgrade.ogg",
+      "original_path": "Audio/confirmation_003.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Interface Sounds",
+      "source_page": "https://kenney.nl/assets/interface-sounds"
+    },
+    "sounds/ui/wave.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/ui/wave.ogg",
+      "original_path": "Audio/open_003.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Interface Sounds",
+      "source_page": "https://kenney.nl/assets/interface-sounds"
+    },
+    "sounds/ui/wave_boss.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/ui/wave_boss.ogg",
+      "original_path": "Audio/impactBell_heavy_000.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/ui/wave_complete.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/ui/wave_complete.ogg",
+      "original_path": "Audio/confirmation_004.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Interface Sounds",
+      "source_page": "https://kenney.nl/assets/interface-sounds"
+    },
+    "sounds/ui/wave_fast.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/ui/wave_fast.ogg",
+      "original_path": "Audio/tick_004.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Interface Sounds",
+      "source_page": "https://kenney.nl/assets/interface-sounds"
+    },
+    "sounds/ui/wave_flying.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/ui/wave_flying.ogg",
+      "original_path": "Audio/open_004.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Interface Sounds",
+      "source_page": "https://kenney.nl/assets/interface-sounds"
+    },
+    "sounds/ui/wave_shield.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/ui/wave_shield.ogg",
+      "original_path": "Audio/impactMetal_heavy_000.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sounds/ui/wave_tank.ogg": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sounds/ui/wave_tank.ogg",
+      "original_path": "Audio/impactWood_heavy_000.ogg",
+      "selection_score": 999,
+      "source_pack": "Kenney Impact Sounds",
+      "source_page": "https://kenney.nl/assets/impact-sounds"
+    },
+    "sprites/terrain/decor_crystal.png": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sprites/terrain/decor_crystal.png",
+      "original_path": "PNG/Details/crystals_1.png",
+      "selection_score": 999,
+      "source_pack": "Kenney Tower Defense",
+      "source_page": "https://kenney.nl/assets/tower-defense"
+    },
+    "sprites/terrain/decor_rock.png": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sprites/terrain/decor_rock.png",
+      "original_path": "PNG/Details/rocks_1.png",
+      "selection_score": 999,
+      "source_pack": "Kenney Tower Defense",
+      "source_page": "https://kenney.nl/assets/tower-defense"
+    },
+    "sprites/terrain/decor_tree.png": {
+      "license": "Creative Commons CC0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "local_path": "assets/sprites/terrain/decor_tree.png",
+      "original_path": "PNG/Details/trees_1.png",
+      "selection_score": 999,
+      "source_pack": "Kenney Tower Defense",
+      "source_page": "https://kenney.nl/assets/tower-defense"
+    }
+  },
+  "license": "Creative Commons CC0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "skipped": [
+    {
+      "local_path": "assets/sprites/towers/archer_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/archer_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/archer_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/archer_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/archer_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/archer_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/sniper_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/sniper_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/sniper_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/sniper_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/sniper_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/sniper_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/machine_gun_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/machine_gun_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/machine_gun_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/machine_gun_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/machine_gun_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/machine_gun_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/cannon_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/cannon_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/cannon_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/cannon_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/cannon_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/cannon_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/frost_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/frost_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/frost_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/frost_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/frost_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/frost_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/tesla_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/tesla_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/tesla_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/tesla_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/tesla_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/tesla_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/poison_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/poison_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/poison_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/poison_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/poison_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/poison_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/barracks_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/barracks_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/barracks_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/barracks_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/barracks_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/barracks_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/flame_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/flame_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/flame_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/flame_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/flame_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/flame_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/mortar_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/mortar_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/mortar_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/mortar_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/mortar_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/mortar_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/support_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/support_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/support_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/support_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/support_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/support_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/gold_idle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/gold_fire.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/gold_idle_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/gold_idle_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/gold_fire_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/towers/gold_fire_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/normal.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/normal_walk_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/normal_walk_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/normal_hit.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/fast.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/fast_walk_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/fast_walk_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/fast_hit.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/tank.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/tank_walk_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/tank_walk_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/tank_hit.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/swarm.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/swarm_walk_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/swarm_walk_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/swarm_hit.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/shield.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/shield_walk_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/shield_walk_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/shield_hit.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/armored.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/armored_walk_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/armored_walk_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/armored_hit.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/flying.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/flying_walk_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/flying_walk_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/flying_hit.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/boss.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/boss_walk_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/boss_walk_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/boss_hit.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/split_child.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/split_child_walk_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/split_child_walk_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/split_child_hit.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/shield_cracked.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/shield_cracked_walk_1.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/shield_cracked_walk_2.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/shield_cracked_hit.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/enemies/boss_rage.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/grass.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/grass_dark.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/road.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/road_edge.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/forest_grass.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/forest_grass_dark.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/forest_road.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/forest_road_edge.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/swamp_grass.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/swamp_grass_dark.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/swamp_road.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/swamp_road_edge.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/snow_grass.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/snow_grass_dark.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/snow_road.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/snow_road_edge.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/lava_grass.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/lava_grass_dark.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/lava_road.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/lava_road_edge.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/spawn_gate.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/terrain/base_gate.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/projectiles/archer.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/projectiles/sniper.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/projectiles/machine_gun.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/projectiles/cannon.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/projectiles/frost.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/projectiles/tesla.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/projectiles/poison.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/projectiles/flame.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/projectiles/mortar.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/projectiles/gold.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/effects/explosion.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/effects/frost_burst.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/effects/spark.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/effects/shield_break.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/effects/smoke.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/effects/explosion_ring.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/effects/frost_mist.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/effects/lightning_spark.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/effects/poison_cloud.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/effects/flame_burst.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    },
+    {
+      "local_path": "assets/sprites/effects/coin_sparkle.png",
+      "reason": "No matching Kenney source found; generated fallback kept."
+    }
+  ],
+  "sources": {
+    "impact_sounds": {
+      "name": "Kenney Impact Sounds",
+      "page": "https://kenney.nl/assets/impact-sounds",
+      "url": "https://kenney.nl/media/pages/assets/impact-sounds/87b4ddecda-1677589768/kenney_impact-sounds.zip"
+    },
+    "interface_sounds": {
+      "name": "Kenney Interface Sounds",
+      "page": "https://kenney.nl/assets/interface-sounds",
+      "url": "https://kenney.nl/media/pages/assets/interface-sounds/fa43c1dd4d-1677589452/kenney_interface-sounds.zip"
+    },
+    "tower_defense": {
+      "name": "Kenney Tower Defense",
+      "page": "https://kenney.nl/assets/tower-defense",
+      "url": "https://kenney.nl/media/pages/assets/tower-defense/39d625c6b5-1677699069/kenney_tower-defense.zip"
+    },
+    "tower_defense_top_down": {
+      "name": "Kenney Tower Defense Top-Down",
+      "page": "https://kenney.nl/assets/tower-defense-top-down",
+      "url": "https://kenney.nl/media/pages/assets/tower-defense-top-down/729844df28-1677693738/kenney_tower-defense-top-down.zip"
+    }
+  }
+}

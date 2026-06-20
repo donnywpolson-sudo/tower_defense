@@ -1,4 +1,9 @@
-from .config import MAX_WAVE
+from .config import (
+    BASE_ENEMIES_PER_WAVE,
+    ENEMIES_PER_WAVE_GROWTH,
+    MAX_WAVE,
+    MIN_SPAWN_INTERVAL,
+)
 
 
 def get_wave_enemy_kind(wave_number):
@@ -37,3 +42,11 @@ def get_boss_count_for_wave(wave_number):
     if wave_number <= MAX_WAVE:
         return 1 + wave_number // 10
     return 1 + wave_number // 10
+
+
+def get_regular_enemy_count(wave_number):
+    return BASE_ENEMIES_PER_WAVE + wave_number * ENEMIES_PER_WAVE_GROWTH
+
+
+def get_spawn_interval(wave_number):
+    return max(MIN_SPAWN_INTERVAL, 0.62 - wave_number * 0.012)

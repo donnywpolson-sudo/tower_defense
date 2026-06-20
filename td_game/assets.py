@@ -26,6 +26,14 @@ def load_sound(relative_path):
         return None
 
 
+def load_sound_any(*relative_paths):
+    for relative_path in relative_paths:
+        sound = load_sound(relative_path)
+        if sound is not None:
+            return sound
+    return None
+
+
 def draw_sprite_centered(surface, sprite, x, y):
     if sprite is None:
         return False

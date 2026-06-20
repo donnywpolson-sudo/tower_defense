@@ -47,8 +47,19 @@ SHOP_COSTS = {
     "cannon": 90,
     "frost": 80,
     "tesla": 100,
+    "poison": 85,
     "barracks": 85,
+    "flame": 95,
+    "mortar": 120,
     "support": 100,
+    "gold": 110,
+}
+
+SHOP_TABS = {
+    "Damage": ("archer", "sniper", "machine_gun", "cannon"),
+    "Control": ("frost", "tesla", "poison"),
+    "Military": ("barracks", "flame", "mortar"),
+    "Utility": ("support", "gold"),
 }
 
 MASTERY_UPGRADE_COSTS = {
@@ -253,6 +264,29 @@ TOWER_TYPES = {
         },
         "paragon": "Storm Paragon",
     },
+    "poison": {
+        "label": "Poison",
+        "short": "P",
+        "role": "Damage over time",
+        "good_vs": "Tanks, bosses, and long fights",
+        "weakness": "Fast swarms can outrun the damage",
+        "color": (105, 190, 85),
+        "range_color": (150, 235, 125),
+        "projectile_color": (125, 235, 95),
+        "tiers": {
+            2: "Venom Tower",
+            3: "Toxic Spitter",
+            4: "Plague Tower",
+            5: "Bio Reactor",
+        },
+        "descriptions": {
+            2: "Poisons enemies for damage over time",
+            3: "Stronger poison lasts longer",
+            4: "Poison spreads to nearby enemies",
+            5: "Bio toxins melt high-health targets",
+        },
+        "paragon": "Venom Core",
+    },
     "barracks": {
         "label": "Barracks",
         "short": "B",
@@ -276,6 +310,52 @@ TOWER_TYPES = {
         },
         "paragon": "Fortress Gate",
     },
+    "flame": {
+        "label": "Flame",
+        "short": "FL",
+        "role": "Short-range burn damage",
+        "good_vs": "Packed ground enemies",
+        "weakness": "Short range and no anti-air",
+        "color": (225, 95, 45),
+        "range_color": (255, 145, 80),
+        "projectile_color": (255, 120, 45),
+        "tiers": {
+            2: "Flame Tower",
+            3: "Firestream",
+            4: "Inferno Tower",
+            5: "Dragon Furnace",
+        },
+        "descriptions": {
+            2: "Burns enemies in close range",
+            3: "Longer burn and hotter flame",
+            4: "Inferno splash hits nearby ground",
+            5: "Dragon fire leaves strong burn",
+        },
+        "paragon": "Sun Forge",
+    },
+    "mortar": {
+        "label": "Mortar",
+        "short": "MO",
+        "role": "Huge range, slow splash",
+        "good_vs": "Clustered enemies far away",
+        "weakness": "Cannot hit close or flying enemies",
+        "color": (115, 105, 90),
+        "range_color": (195, 175, 135),
+        "projectile_color": (105, 95, 80),
+        "tiers": {
+            2: "Mortar Pit",
+            3: "Heavy Mortar",
+            4: "Siege Mortar",
+            5: "Bombardment Core",
+        },
+        "descriptions": {
+            2: "Huge range with a minimum range",
+            3: "Heavier shells and wider splash",
+            4: "Siege blasts punish clusters",
+            5: "Bombardment hits a large area",
+        },
+        "paragon": "Meteor Battery",
+    },
     "support": {
         "label": "Support",
         "short": "SUP",
@@ -298,6 +378,29 @@ TOWER_TYPES = {
             5: "Stronger combined aura",
         },
         "paragon": "High Command",
+    },
+    "gold": {
+        "label": "Gold",
+        "short": "$",
+        "role": "Weak damage plus bonus income",
+        "good_vs": "Long games and early economy",
+        "weakness": "Poor emergency damage",
+        "color": (220, 180, 65),
+        "range_color": (255, 220, 110),
+        "projectile_color": (255, 220, 90),
+        "tiers": {
+            2: "Gold Tower",
+            3: "Mint Tower",
+            4: "Treasury Tower",
+            5: "Royal Vault",
+        },
+        "descriptions": {
+            2: "Weak shots and small income over time",
+            3: "Minting improves income and range",
+            4: "Treasury earns more during waves",
+            5: "Royal Vault generates strong income",
+        },
+        "paragon": "Golden Engine",
     },
 }
 

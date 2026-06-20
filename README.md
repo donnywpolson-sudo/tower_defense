@@ -33,7 +33,7 @@ Optional graphics flags:
 .\.venv\Scripts\python.exe tower_defense.py --disable-glow --disable-particles --disable-screen-shake
 ```
 
-The root `tower_defense.py` file is a tiny compatibility launcher. The game code lives in `td_game/`.
+The root `tower_defense.py` file is a tiny compatibility launcher. Most active gameplay still lives in `td_game/app.py`; smaller helper modules hold data, config, geometry, rendering, particles, assets, audio, and wave helpers.
 
 ## Regenerate Assets
 
@@ -41,12 +41,38 @@ The root `tower_defense.py` file is a tiny compatibility launcher. The game code
 .\.venv\Scripts\python.exe tools\generate_assets.py
 ```
 
+This creates local placeholder sprites and sounds. These files are original generated assets and are also the fallback if external assets are missing.
+
+## Download Free Kenney Assets
+
+Optional CC0 assets can be imported from Kenney's official site:
+
+```powershell
+.\.venv\Scripts\python.exe tools\download_free_assets.py
+.\.venv\Scripts\python.exe tools\validate_assets.py
+```
+
+The importer downloads official Kenney ZIP packs into `tools/_asset_downloads/`, extracts them locally, and copies curated files into the existing `assets/` paths used by the game. It is safe to rerun.
+
+Kenney assets used by this project are Creative Commons CC0. Attribution is not required, but crediting Kenney is appreciated. License/source notes are written to `assets/licenses/kenney_assets.md`, and imported files are tracked in `assets/asset_manifest.json`.
+
+Do not add ripped assets, trademarked game assets, RuneScape assets, Bloons assets, Pokémon assets, or anything with unclear licensing.
+
 ## Project Layout
 
 ```text
 tower_defense.py          # stable Python entry point
 Play Tower Defense.lnk    # player-facing double-click launcher
-td_game/                  # game package
-assets/                   # generated sprites and sounds
+td_game/app.py            # main loop, entities, UI, and gameplay integration
+td_game/config.py         # constants and tuning values
+td_game/data.py           # tower, map, upgrade, and mutation data
+td_game/waves.py          # wave preview/count helpers
+td_game/rendering.py      # Pygame/OpenGL presentation backends
+td_game/assets.py         # image/sound loading helpers
+td_game/audio.py          # generated tone fallback helper
+assets/                   # generated sprites and sounds used by the game
 tools/generate_assets.py  # local asset generator
+tools/download_free_assets.py  # optional Kenney CC0 asset importer
+tools/validate_assets.py       # required asset path validator
+tests/                    # lightweight smoke tests
 ```

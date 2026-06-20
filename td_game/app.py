@@ -1,11 +1,14 @@
 import sys
 import math
 import array
+import argparse
 import pygame
 
 from .config import *
 from .data import *
 from .geometry import dist, distance_segment_to_rect, distance_to_segment
+from .particles import ParticleManager
+from .rendering import RenderOptions, make_renderer
 from .waves import (
     get_boss_count_for_wave as get_boss_count_for_wave_data,
     get_wave_affix as get_wave_affix_data,
@@ -15,9 +18,7 @@ from .waves import (
 
 pygame.init()
 
-window = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
 screen = pygame.Surface((WIDTH, HEIGHT))
-pygame.display.set_caption("Tower Defense v0.1")
 clock = pygame.time.Clock()
 font = pygame.font.SysFont(None, 28)
 small_font = pygame.font.SysFont(None, 22)
@@ -64,6 +65,37 @@ images = {}
 last_sound_times = {}
 music_loaded = False
 current_music_track = None
+renderer_backend = None
+render_options = RenderOptions(
+    renderer=RENDERER,
+    enable_glow=ENABLE_GLOW,
+    enable_particles=ENABLE_PARTICLES,
+    enable_screen_shake=ENABLE_SCREEN_SHAKE,
+    max_particles=MAX_PARTICLES,
+)
+particle_manager = ParticleManager(MAX_PARTICLES)
+glow_cache = {}
+scaled_sprite_cache = {}
+
+
+def parse_runtime_options(argv=None):
+    parser = argparse.ArgumentParser(description="Tower Defense")
+    parser.add_argument("--renderer", choices=("pygame", "opengl"), default=RENDERER)
+    parser.add_argument("--enable-glow", dest="enable_glow", action="store_true", default=ENABLE_GLOW)
+    parser.add_argument("--disable-glow", dest="enable_glow", action="store_false")
+    parser.add_argument("--enable-particles", dest="enable_particles", action="store_true", default=ENABLE_PARTICLES)
+    parser.add_argument("--disable-particles", dest="enable_particles", action="store_false")
+    parser.add_argument("--enable-screen-shake", dest="enable_screen_shake", action="store_true", default=ENABLE_SCREEN_SHAKE)
+    parser.add_argument("--disable-screen-shake", dest="enable_screen_shake", action="store_false")
+    parser.add_argument("--max-particles", type=int, default=MAX_PARTICLES)
+    args = parser.parse_args(argv)
+    return RenderOptions(
+        renderer=args.renderer,
+        enable_glow=args.enable_glow,
+        enable_particles=args.enable_particles,
+        enable_screen_shake=args.enable_screen_shake,
+        max_particles=max(0, args.max_particles),
+    )
 
 def draw_text(text, x, y, color=(240, 240, 240)):
     img = font.render(text, True, color)
@@ -245,6 +277,38 @@ def draw_sprite_centered(sprite, x, y):
     return True
 
 
+def get_scaled_sprite(sprite, size):
+    if sprite is None:
+        return None
+    key = (id(sprite), size)
+    scaled = scaled_sprite_cache.get(key)
+    if scaled is None:
+        scaled = pygame.transform.scale(sprite, size)
+        scaled_sprite_cache[key] = scaled
+    return scaled
+
+
+def draw_glow(x, y, color, radius=18, alpha=50):
+    if not render_options.enable_glow:
+        return
+    key = (tuple(color), int(radius), int(alpha))
+    glow = glow_cache.get(key)
+    if glow is None:
+        size = int(radius * 2)
+        glow = pygame.Surface((size, size), pygame.SRCALPHA)
+        for step in range(4, 0, -1):
+            step_radius = int(radius * step / 4)
+            step_alpha = int(alpha * (step / 4) ** 2)
+            pygame.draw.circle(glow, (*color[:3], step_alpha), (size // 2, size // 2), step_radius)
+        glow_cache[key] = glow
+    screen.blit(glow, (int(x - radius), int(y - radius)), special_flags=pygame.BLEND_ADD)
+
+
+def emit_particles(x, y, color, count=6, speed=70, size=4, lifetime=0.45):
+    if render_options.enable_particles and particle_manager is not None:
+        particle_manager.emit(x, y, color, count, speed, size, lifetime)
+
+
 def init_images():
     global images
 
@@ -376,6 +440,9 @@ def update_music_state():
 def trigger_screen_shake(duration=0.12, strength=4):
     global screen_shake_timer, screen_shake_strength
 
+    if not render_options.enable_screen_shake:
+        return
+
     screen_shake_timer = max(screen_shake_timer, duration)
     screen_shake_strength = max(screen_shake_strength, strength)
 
@@ -462,6 +529,10 @@ def get_tower_at(pos):
     return None
 
 
+def has_behavior_tag(enemy, tag):
+    return tag in enemy.behavior_tags()
+
+
 class Enemy:
     def __init__(self, hp, speed, reward, kind="normal", shield_hits=0, flying=False, boss=False, death_spawns=0, affix=None, path_index=0, is_split_child=False):
         self.path_index = path_index % len(current_paths())
@@ -494,6 +565,7 @@ class Enemy:
         self.shield_break_timer = 0
         self.marked_timer = 0
         self.barracks_hold_timer = 0
+        self.last_damaging_tower = None
         if affix == "regen":
             self.regen_rate = max(3, self.max_hp * 0.012)
         elif affix == "armored":
@@ -503,27 +575,64 @@ class Enemy:
         elif affix == "split":
             self.death_spawns += 2
 
-    def take_damage(self, amount, damage_type=None):
+    def behavior_tags(self):
+        tags = set()
+        if self.kind == "fast" or self.affix == "haste":
+            tags.add("fast")
+        if self.kind in ("shield", "armored") or self.affix == "armored" or self.shield_hits > 0:
+            tags.add("armored")
+        if self.kind == "swarm" or self.is_split_child or self.affix == "split":
+            tags.add("swarm")
+        if self.flying:
+            tags.add("flying")
+        if self.boss:
+            tags.add("boss")
+        return tags
+
+    def take_damage(self, amount, damage_type=None, source_tower=None):
         self.hit_flash_timer = 0.12
-        if damage_type == "electric":
+        tags = self.behavior_tags()
+        effective_damage_type = damage_type
+
+        if source_tower is not None:
+            self.last_damaging_tower = source_tower
+            if source_tower.has_mutation("fast_hunter") and "fast" in tags:
+                amount *= 1.25
+                self.slow_timer = max(self.slow_timer, 0.45)
+                self.slow_multiplier = min(self.slow_multiplier, 0.74)
+            if source_tower.has_mutation("armor_piercer") and "armored" in tags:
+                amount *= 1.25
+                effective_damage_type = "pierce"
+            if source_tower.has_mutation("swarm_reaper") and "swarm" in tags:
+                amount *= 1.22
+            if source_tower.has_mutation("sky_watcher") and "flying" in tags:
+                amount *= 1.30
+            if source_tower.has_mutation("corrupted") and self.hp <= self.max_hp * 0.40:
+                amount *= 1.32
+
+        if effective_damage_type == "electric":
             if self.boss:
                 amount *= 0.55
             elif self.kind in ("armored", "shield") or self.shield_hits > 0:
                 amount *= 0.65
 
+        shield_before = self.shield_hits
         if self.shield_hits > 0:
-            amount *= 0.75 if damage_type == "pierce" else 0.35
+            amount *= 0.75 if effective_damage_type == "pierce" else 0.35
             self.shield_hits -= 1
             self.shield_break_timer = 0.22
-            effects.append(SparkEffect(self.x, self.y, (220, 230, 255), self.radius + 8, 0.18))
+            add_effect(SparkEffect(self.x, self.y, (220, 230, 255), self.radius + 8, 0.18))
+            emit_particles(self.x, self.y, (220, 230, 255), 5, 55, 3, 0.28)
             add_floating_text(self.x - 12, self.y - 42, "SHIELD", (220, 230, 255))
             play_sound("shield_break", 0.08)
 
         if self.affix == "armored":
-            amount *= 0.95 if damage_type == "pierce" else 0.8
+            amount *= 0.95 if effective_damage_type == "pierce" else 0.8
 
         dealt = amount * self.damage_multiplier
         self.hp -= dealt
+        if source_tower is not None:
+            source_tower.record_hit(self, dealt, shield_before > self.shield_hits)
         return dealt
 
     def progress(self):
@@ -643,17 +752,25 @@ class Enemy:
                 pygame.draw.circle(screen, (220, 230, 255), (int(self.x), int(self.y)), self.radius + 8, 2)
         if not drew_sprite:
             pygame.draw.circle(screen, color, (int(self.x), int(self.y)), self.radius)
-        if self.shield_hits > 0:
+        crowded = len(enemies) >= VERY_BUSY_ENEMY_COUNT
+        if self.shield_hits > 0 and not crowded:
             pygame.draw.circle(screen, (225, 225, 245), (int(self.x), int(self.y)), self.radius + 5, 2)
-        if self.flying:
+        if self.flying and not crowded:
             pygame.draw.circle(screen, (235, 225, 255), (int(self.x), int(self.y)), self.radius + 4, 1)
-        if self.affix:
+        if self.affix and not crowded:
             pygame.draw.circle(screen, (255, 255, 140), (int(self.x), int(self.y)), self.radius + 8, 1)
 
-        bar_w = 48 if self.boss else 34
-        hp_ratio = max(0, self.hp / self.max_hp)
-        pygame.draw.rect(screen, (40, 40, 40), (self.x - bar_w / 2, self.y - self.radius - 13, bar_w, 5))
-        pygame.draw.rect(screen, (60, 220, 80), (self.x - bar_w / 2, self.y - self.radius - 13, bar_w * hp_ratio, 5))
+        show_health_bar = (
+            self.boss
+            or len(enemies) < CROWD_HEALTH_BAR_LIMIT
+            or self.hit_flash_timer > 0
+            or self.hp < self.max_hp * 0.55
+        )
+        if show_health_bar:
+            bar_w = 48 if self.boss else 34
+            hp_ratio = max(0, self.hp / self.max_hp)
+            pygame.draw.rect(screen, (40, 40, 40), (self.x - bar_w / 2, self.y - self.radius - 13, bar_w, 5))
+            pygame.draw.rect(screen, (60, 220, 80), (self.x - bar_w / 2, self.y - self.radius - 13, bar_w * hp_ratio, 5))
 
 
 class Tower:
@@ -673,6 +790,18 @@ class Tower:
         self.total_damage = 0
         self.mastery_xp = 0
         self.fire_anim_timer = 0
+        self.mutations = []
+        self.available_mutations = []
+        self.notified_mutations = set()
+        self.shots_fired = 0
+        self.waves_present = 0
+        self.behavior_hits = {"fast": 0, "armored": 0, "swarm": 0, "flying": 0}
+        self.behavior_damage = {"fast": 0, "armored": 0, "swarm": 0, "flying": 0}
+        self.behavior_kills = {"fast": 0, "armored": 0, "swarm": 0, "flying": 0}
+        self.shield_breaks = 0
+        self.nearby_deaths = 0
+        self.flying_seen_timer = 0
+        self.corruption_burst_cooldown = 0
         if tower_type:
             self.tower_type = tower_type
             self.level = 2
@@ -682,6 +811,49 @@ class Tower:
     def cycle_target_mode(self):
         index = TARGET_MODES.index(self.target_mode)
         self.target_mode = TARGET_MODES[(index + 1) % len(TARGET_MODES)]
+
+    def has_mutation(self, mutation_key):
+        return mutation_key in self.mutations
+
+    def can_add_mutation(self):
+        return len(self.mutations) < MUTATION_SLOT_LIMIT
+
+    def apply_mutation(self, mutation_key):
+        if mutation_key not in self.available_mutations or not self.can_add_mutation():
+            return False
+
+        self.available_mutations.remove(mutation_key)
+        self.mutations.append(mutation_key)
+        data = MUTATION_TRAITS[mutation_key]
+        add_floating_text(self.x - 34, self.y - 48, data["label"], data["color"])
+        return True
+
+    def record_hit(self, enemy, dealt, broke_shield=False):
+        for tag in enemy.behavior_tags():
+            if tag in self.behavior_hits:
+                self.behavior_hits[tag] += 1
+                self.behavior_damage[tag] += dealt
+        if broke_shield:
+            self.shield_breaks += 1
+
+    def record_kill(self, enemy):
+        self.kills += 1
+        self.mastery_xp += 1
+        for tag in enemy.behavior_tags():
+            if tag in self.behavior_kills:
+                self.behavior_kills[tag] += 1
+
+    def update_mutation_timers(self, dt):
+        if self.corruption_burst_cooldown > 0:
+            self.corruption_burst_cooldown = max(0, self.corruption_burst_cooldown - dt)
+
+        if self.tower_type in ("support", "barracks"):
+            return
+
+        for enemy in enemies:
+            if enemy.flying and dist((self.x, self.y), (enemy.x, enemy.y)) <= self.effective_range():
+                self.flying_seen_timer += dt
+                break
 
     @property
     def upgrade_cost(self):
@@ -839,9 +1011,13 @@ class Tower:
             return False
         if not enemy.flying:
             return True
+        if self.has_mutation("sky_watcher"):
+            return True
         return self.is_paragon or self.tower_type == "tesla" and self.level >= 4 or self.tower_type == "sniper" and self.level >= 3
 
     def update(self, dt):
+        self.update_mutation_timers(dt)
+
         if self.fire_anim_timer > 0:
             self.fire_anim_timer -= dt
 
@@ -859,8 +1035,12 @@ class Tower:
 
         target = self.find_target()
         if target:
-            projectiles.append(Projectile(self.x, self.y, target, self))
-            play_sound(self.tower_type, 0.035 if self.tower_type in ("machine_gun", "tesla") else 0.08)
+            if len(projectiles) < MAX_ACTIVE_PROJECTILES:
+                projectiles.append(Projectile(self.x, self.y, target, self))
+                self.shots_fired += 1
+                data = TOWER_TYPES.get(self.tower_type, {})
+                emit_particles(self.x, self.y, data.get("projectile_color", (245, 220, 80)), 3, 40, 3, 0.18)
+                play_sound(self.tower_type, 0.035 if self.tower_type in ("machine_gun", "tesla") else 0.08)
             self.fire_anim_timer = 0.12
             self.cooldown = self.effective_fire_rate()
 
@@ -877,7 +1057,7 @@ class Tower:
                     enemy.vulnerable_timer = max(enemy.vulnerable_timer, 0.5)
                     enemy.damage_multiplier = max(enemy.damage_multiplier, 1.12 if self.level < PARAGON_LEVEL else 1.25)
                 if self.level >= 5:
-                    dealt = enemy.take_damage(self.effective_damage() * dt * 1.5, "melee")
+                    dealt = enemy.take_damage(self.effective_damage() * dt * 1.5, "melee", self)
                     self.total_damage += dealt
                     self.mastery_xp += dealt * 0.02
 
@@ -931,6 +1111,14 @@ class Tower:
                     bonus = max(bonus, 0.25 if tower.is_paragon else 0.16 if tower.level >= 5 else 0.10)
                 elif bonus_type == "range" and tower.level >= 4:
                     bonus = max(bonus, 0.25 if tower.is_paragon else 0.15 if tower.level >= 5 else 0.10)
+        for tower in towers:
+            if tower == self or not tower.has_mutation("field_medic"):
+                continue
+            if dist((self.x, self.y), (tower.x, tower.y)) <= tower.range * 0.85:
+                if bonus_type == "damage":
+                    bonus = max(bonus, 0.07)
+                elif bonus_type == "rate":
+                    bonus = max(bonus, 0.06)
         return bonus
 
     def effective_damage(self):
@@ -948,6 +1136,7 @@ class Tower:
         label = data["short"] if data else str(self.level)
 
         pygame.draw.ellipse(screen, (0, 0, 0, 85), (self.x - 20, self.y + 18, 40, 12))
+        draw_glow(self.x, self.y, color, 28 if self.is_paragon else 22, 36 if self.is_paragon else 24)
         sprite = None
         if self.tower_type:
             frames = images.get("towers", {}).get(self.tower_type, {})
@@ -957,10 +1146,14 @@ class Tower:
                 sprite = get_animation_frame([frames.get("idle_1"), frames.get("idle_2")], 420) or frames.get("idle")
         if not draw_sprite_centered(sprite, self.x, self.y):
             self.draw_figurine(color)
-        if self.tower_type == "support" and selected_tower == self:
-            pygame.draw.circle(screen, (245, 225, 145), (self.x, self.y), int(self.effective_range()), 1)
+        if selected_tower == self and (self.tower_type == "support" or self.has_mutation("field_medic")):
+            aura_color = (245, 225, 145) if self.tower_type == "support" else MUTATION_TRAITS["field_medic"]["color"]
+            pygame.draw.circle(screen, aura_color, (self.x, self.y), int(self.effective_range()), 1)
         if self.is_paragon:
             pygame.draw.circle(screen, (255, 255, 255), (self.x, self.y), 23, 2)
+        for index, mutation_key in enumerate(self.mutations[:MUTATION_SLOT_LIMIT]):
+            mutation = MUTATION_TRAITS[mutation_key]
+            pygame.draw.circle(screen, mutation["color"], (self.x - 14 + index * 12, self.y + 27), 4)
         draw_text(str(self.level), self.x - 6, self.y - 10, (255, 255, 255))
         draw_small_text("M" if self.is_paragon else label, self.x - 13, self.y + 8, (255, 255, 255))
         if self.level >= MAX_TOWER_LEVEL:
@@ -1026,7 +1219,7 @@ class BurstEffect:
         sprite = images.get("effects", {}).get(sprite_name)
         if sprite:
             size = max(12, radius * 2)
-            scaled = pygame.transform.scale(sprite, (size, size))
+            scaled = get_scaled_sprite(sprite, (size, size))
             draw_sprite_centered(scaled, self.x, self.y)
         else:
             pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), radius, 2)
@@ -1053,7 +1246,7 @@ class SparkEffect:
         sprite = images.get("effects", {}).get("spark")
         if sprite:
             size = max(8, radius * 2)
-            scaled = pygame.transform.scale(sprite, (size, size))
+            scaled = get_scaled_sprite(sprite, (size, size))
             draw_sprite_centered(scaled, self.x, self.y)
         else:
             pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), radius)
@@ -1126,10 +1319,141 @@ def damage_text_color(tower_type):
 
 
 def add_floating_text(x, y, text, color):
-    floating_count = sum(1 for effect in effects if isinstance(effect, FloatingTextEffect))
-    if floating_count >= 55:
+    if not should_show_floating_text(text):
         return
-    effects.append(FloatingTextEffect(x, y, text, color))
+    floating_count = sum(1 for effect in effects if isinstance(effect, FloatingTextEffect))
+    if floating_count >= current_floating_text_limit():
+        return
+    add_effect(FloatingTextEffect(x, y, text, color))
+
+
+def add_effect(effect):
+    if not should_show_effect(effect):
+        return
+    max_effects = current_effect_limit()
+    if len(effects) >= max_effects:
+        for index, existing in enumerate(effects):
+            if not isinstance(existing, FloatingTextEffect):
+                effects.pop(index)
+                break
+        else:
+            return
+    effects.append(effect)
+
+
+def current_effect_limit():
+    if len(enemies) >= VERY_BUSY_ENEMY_COUNT:
+        return 70
+    if len(enemies) >= BUSY_ENEMY_COUNT:
+        return 105
+    return MAX_ACTIVE_EFFECTS
+
+
+def current_floating_text_limit():
+    if len(enemies) >= VERY_BUSY_ENEMY_COUNT:
+        return 8
+    if len(enemies) >= BUSY_ENEMY_COUNT:
+        return 16
+    return MAX_FLOATING_TEXTS
+
+
+def should_show_floating_text(text):
+    if len(enemies) < BUSY_ENEMY_COUNT:
+        return True
+
+    numeric_text = text.isdigit() or text.startswith(("+$", "$", "CRIT "))
+    noisy_status = text in {"BLOCK", "CHAIN", "SHIELD", "SLOW"}
+    if numeric_text or noisy_status:
+        return False
+
+    if len(enemies) >= VERY_BUSY_ENEMY_COUNT and text not in {"FREEZE", "SHATTER", "OVERCHARGE"}:
+        return False
+
+    return True
+
+
+def should_show_effect(effect):
+    enemy_count = len(enemies)
+    if enemy_count < BUSY_ENEMY_COUNT:
+        return True
+
+    if isinstance(effect, SparkEffect):
+        return len(effects) < current_effect_limit() * 0.35
+    if isinstance(effect, LightningEffect):
+        return enemy_count < VERY_BUSY_ENEMY_COUNT and len(effects) < current_effect_limit() * 0.55
+    if isinstance(effect, BurstEffect):
+        return len(effects) < current_effect_limit() * 0.75
+
+    return True
+
+
+def mutation_requirement_met(tower, mutation_key):
+    if tower.tower_type is None:
+        return False
+    if mutation_key in tower.mutations or mutation_key in tower.available_mutations:
+        return False
+    if not tower.can_add_mutation():
+        return False
+
+    if mutation_key == "fast_hunter":
+        return tower.behavior_hits["fast"] >= 20 or tower.behavior_kills["fast"] >= 5
+    if mutation_key == "armor_piercer":
+        return tower.behavior_hits["armored"] >= 22 or tower.shield_breaks >= 8
+    if mutation_key == "field_medic":
+        return (
+            tower.tower_type != "support"
+            and tower.waves_present >= 2
+            and tower.kills <= 2
+            and (tower.shots_fired >= 22 or tower.total_damage >= 250 or tower.mastery_xp >= 6)
+        )
+    if mutation_key == "corrupted":
+        return tower.nearby_deaths >= 28
+    if mutation_key == "swarm_reaper":
+        return tower.behavior_hits["swarm"] >= 30 or tower.behavior_kills["swarm"] >= 8
+    if mutation_key == "sky_watcher":
+        return (
+            tower.tower_type not in ("support", "barracks")
+            and (tower.behavior_hits["flying"] >= 10 or tower.behavior_kills["flying"] >= 3 or tower.flying_seen_timer >= 10)
+        )
+    return False
+
+
+def evaluate_mutations_for_tower(tower):
+    available_slots = MUTATION_SLOT_LIMIT - len(tower.mutations) - len(tower.available_mutations)
+    if available_slots <= 0:
+        return
+
+    for mutation_key in MUTATION_TRAITS:
+        if mutation_requirement_met(tower, mutation_key):
+            tower.available_mutations.append(mutation_key)
+            if mutation_key not in tower.notified_mutations:
+                tower.notified_mutations.add(mutation_key)
+                add_floating_text(tower.x - 38, tower.y - 48, "MUTATION READY", MUTATION_TRAITS[mutation_key]["color"])
+            available_slots -= 1
+            if available_slots <= 0:
+                break
+
+
+def evaluate_all_mutations():
+    for tower in towers:
+        evaluate_mutations_for_tower(tower)
+
+
+def award_enemy_death_credit(enemy):
+    killer = enemy.last_damaging_tower
+    if killer in towers:
+        killer.record_kill(enemy)
+        if killer.has_mutation("corrupted") and killer.corruption_burst_cooldown <= 0:
+            add_effect(BurstEffect(enemy.x, enemy.y, MUTATION_TRAITS["corrupted"]["color"], 34, 0.24))
+            emit_particles(enemy.x, enemy.y, MUTATION_TRAITS["corrupted"]["color"], 9, 90, 5, 0.42)
+            killer.corruption_burst_cooldown = 0.45
+
+    death_color = (255, 150, 90) if enemy.boss else (220, 90, 70)
+    emit_particles(enemy.x, enemy.y, death_color, 14 if enemy.boss else 6, 95 if enemy.boss else 55, 5 if enemy.boss else 3, 0.45)
+
+    for tower in towers:
+        if dist((tower.x, tower.y), (enemy.x, enemy.y)) <= CORRUPTION_DEATH_RADIUS:
+            tower.nearby_deaths += 1
 
 
 class Projectile:
@@ -1164,6 +1488,9 @@ class Projectile:
         self.update_trail(dt)
 
     def update_trail(self, dt):
+        if len(enemies) >= BUSY_ENEMY_COUNT:
+            return
+
         self.trail_timer -= dt
         if self.trail_timer > 0:
             return
@@ -1171,24 +1498,30 @@ class Projectile:
         self.trail_timer = 0.035
 
         if self.tower_type == "machine_gun":
-            effects.append(SparkEffect(self.x, self.y, (255, 230, 120), 3, 0.08))
+            add_effect(SparkEffect(self.x, self.y, (255, 230, 120), 3, 0.08))
+            emit_particles(self.x, self.y, (255, 230, 120), 1, 22, 2, 0.14)
         elif self.tower_type == "cannon":
-            effects.append(SparkEffect(self.x, self.y, (90, 80, 70), 5, 0.18))
+            add_effect(SparkEffect(self.x, self.y, (90, 80, 70), 5, 0.18))
+            emit_particles(self.x, self.y, (90, 80, 70), 2, 24, 3, 0.22)
         elif self.tower_type == "frost":
-            effects.append(SparkEffect(self.x, self.y, (185, 240, 255), 5, 0.18))
+            add_effect(SparkEffect(self.x, self.y, (185, 240, 255), 5, 0.18))
+            emit_particles(self.x, self.y, (185, 240, 255), 2, 24, 3, 0.22)
         elif self.tower_type == "tesla":
             jittered = (
                 self.x + math.sin(self.trail_timer + self.x) * 8,
                 self.y + math.cos(self.trail_timer + self.y) * 8,
             )
-            effects.append(LightningEffect((self.x, self.y), jittered, duration=0.04))
+            add_effect(LightningEffect((self.x, self.y), jittered, duration=0.04))
+            emit_particles(self.x, self.y, (255, 245, 90), 1, 28, 2, 0.12)
 
     def hit_target(self):
         self.spawn_hit_effect()
+        data = TOWER_TYPES.get(self.tower_type, {})
+        emit_particles(self.target.x, self.target.y, data.get("projectile_color", (245, 220, 80)), 4, 60, 3, 0.24)
         damage_type = self.get_damage_type()
         shield_before = self.target.shield_hits
         damage, synergy_labels = apply_synergy_damage(self.tower_type, self.target, self.damage, damage_type)
-        dealt = self.target.take_damage(damage, damage_type)
+        dealt = self.target.take_damage(damage, damage_type, self.source_tower)
         if shield_before > 0:
             add_floating_text(self.target.x - 10, self.target.y - 34, "BLOCK", (210, 210, 235))
         for index, label in enumerate(synergy_labels):
@@ -1196,9 +1529,7 @@ class Projectile:
         add_floating_text(self.target.x - 8, self.target.y - 24, str(int(dealt)), damage_text_color(self.tower_type))
         self.source_tower.total_damage += dealt
         self.source_tower.mastery_xp += dealt * 0.02
-        if self.target.hp <= 0:
-            self.source_tower.kills += 1
-            self.source_tower.mastery_xp += 1
+        self.apply_swarm_reaper_cleave()
 
         if self.tower_type == "sniper":
             self.target.marked_timer = max(self.target.marked_timer, 2.0)
@@ -1206,7 +1537,7 @@ class Projectile:
             if self.tower_level >= 3:
                 self.target.shield_hits = max(0, self.target.shield_hits - 1)
             if self.tower_level >= 4:
-                dealt = self.target.take_damage(self.damage * 0.35, "pierce")
+                dealt = self.target.take_damage(self.damage * 0.35, "pierce", self.source_tower)
                 add_floating_text(self.target.x + 8, self.target.y - 38, f"CRIT {int(dealt)}", (255, 245, 245))
                 self.source_tower.total_damage += dealt
                 self.source_tower.mastery_xp += dealt * 0.02
@@ -1220,7 +1551,7 @@ class Projectile:
             for enemy in enemies:
                 if enemy != self.target and dist((self.target.x, self.target.y), (enemy.x, enemy.y)) <= splash_radius:
                     adjusted_damage, labels = apply_synergy_damage(self.tower_type, enemy, splash_damage, "explosive")
-                    dealt = enemy.take_damage(adjusted_damage, "explosive")
+                    dealt = enemy.take_damage(adjusted_damage, "explosive", self.source_tower)
                     for label_index, label in enumerate(labels):
                         add_floating_text(enemy.x - 16, enemy.y - 38 - label_index * 12, label, (255, 245, 150))
                     add_floating_text(enemy.x - 8, enemy.y - 24, str(int(dealt)), damage_text_color(self.tower_type))
@@ -1269,13 +1600,30 @@ class Projectile:
             ]
             chain_targets.sort(key=lambda e: dist((self.target.x, self.target.y), (e.x, e.y)))
             for enemy in chain_targets[:chain_count]:
-                dealt = enemy.take_damage(chain_damage, "electric")
+                dealt = enemy.take_damage(chain_damage, "electric", self.source_tower)
                 add_floating_text(enemy.x - 8, enemy.y - 24, str(int(dealt)), damage_text_color(self.tower_type))
                 add_floating_text(enemy.x - 10, enemy.y - 38, "CHAIN", (180, 220, 255))
                 self.source_tower.total_damage += dealt
                 self.source_tower.mastery_xp += dealt * 0.02
-                effects.append(LightningEffect((self.target.x, self.target.y), (enemy.x, enemy.y)))
+                add_effect(LightningEffect((self.target.x, self.target.y), (enemy.x, enemy.y)))
                 play_sound("chain", 0.05)
+
+    def apply_swarm_reaper_cleave(self):
+        if not self.source_tower.has_mutation("swarm_reaper") or not has_behavior_tag(self.target, "swarm"):
+            return
+
+        cleave_targets = [
+            enemy for enemy in enemies
+            if enemy != self.target
+            and has_behavior_tag(enemy, "swarm")
+            and dist((self.target.x, self.target.y), (enemy.x, enemy.y)) <= 55
+        ]
+        cleave_targets.sort(key=lambda enemy: dist((self.target.x, self.target.y), (enemy.x, enemy.y)))
+        for enemy in cleave_targets[:3]:
+            dealt = enemy.take_damage(self.damage * 0.22, "physical", self.source_tower)
+            self.source_tower.total_damage += dealt
+            self.source_tower.mastery_xp += dealt * 0.02
+            add_floating_text(enemy.x - 12, enemy.y - 34, "REAP", MUTATION_TRAITS["swarm_reaper"]["color"])
 
     def get_damage_type(self):
         if self.tower_type == "sniper":
@@ -1288,18 +1636,18 @@ class Projectile:
 
     def spawn_hit_effect(self):
         if self.tower_type == "sniper":
-            effects.append(LightningEffect((self.x, self.y), (self.target.x, self.target.y), (245, 245, 235), 0.06))
+            add_effect(LightningEffect((self.x, self.y), (self.target.x, self.target.y), (245, 245, 235), 0.06))
         elif self.tower_type == "machine_gun":
-            effects.append(SparkEffect(self.target.x, self.target.y, (255, 225, 100), 7, 0.08))
+            add_effect(SparkEffect(self.target.x, self.target.y, (255, 225, 100), 7, 0.08))
         elif self.tower_type == "cannon":
-            effects.append(BurstEffect(self.target.x, self.target.y, (185, 120, 70), 34 + self.tower_level * 7, 0.28))
+            add_effect(BurstEffect(self.target.x, self.target.y, (185, 120, 70), 34 + self.tower_level * 7, 0.28))
         elif self.tower_type == "frost":
-            effects.append(BurstEffect(self.target.x, self.target.y, (120, 220, 255), 24 + self.tower_level * 4, 0.26))
+            add_effect(BurstEffect(self.target.x, self.target.y, (120, 220, 255), 24 + self.tower_level * 4, 0.26))
         elif self.tower_type == "tesla":
-            effects.append(LightningEffect((self.x, self.y), (self.target.x, self.target.y)))
-            effects.append(SparkEffect(self.target.x, self.target.y, (255, 255, 150), 12, 0.16))
+            add_effect(LightningEffect((self.x, self.y), (self.target.x, self.target.y)))
+            add_effect(SparkEffect(self.target.x, self.target.y, (255, 255, 150), 12, 0.16))
         else:
-            effects.append(BurstEffect(self.target.x, self.target.y, (245, 220, 80), 18, 0.18))
+            add_effect(BurstEffect(self.target.x, self.target.y, (245, 220, 80), 18, 0.18))
 
     def nearby_enemies(self, target, radius, limit=None):
         nearby = [
@@ -1323,6 +1671,7 @@ class Projectile:
         data = TOWER_TYPES.get(self.tower_type)
         color = data["projectile_color"] if data else (245, 220, 80)
         sprite = images.get("projectiles", {}).get(self.tower_type)
+        draw_glow(self.x, self.y, color, 12, 44)
 
         if draw_sprite_centered(sprite, self.x, self.y):
             return
@@ -1469,6 +1818,9 @@ def can_place_tower(pos):
 def spawn_enemy():
     global spawn_path_index, boss_warning_timer
 
+    if len(enemies) >= MAX_ACTIVE_ENEMIES:
+        return False
+
     kind = get_next_enemy_kind()
     path_index = spawn_path_index % len(current_paths())
     spawn_path_index += 1
@@ -1477,6 +1829,7 @@ def spawn_enemy():
         play_sound("boss_spawn", 0.5)
         trigger_screen_shake(0.2, 5)
         boss_warning_timer = 2.0
+    return True
 
 
 def get_next_enemy_kind():
@@ -1600,7 +1953,12 @@ def place_spawned_enemy(enemy, x=None, y=None, target_index=1):
 
 
 def spawn_death_minions(enemy):
-    for index in range(enemy.death_spawns):
+    split_children = sum(1 for active_enemy in enemies if active_enemy.is_split_child)
+    available_enemy_slots = max(0, MAX_ACTIVE_ENEMIES - len(enemies))
+    available_split_slots = max(0, MAX_SPLIT_CHILDREN - split_children)
+    spawn_count = min(enemy.death_spawns, available_enemy_slots, available_split_slots)
+
+    for index in range(spawn_count):
         minion = create_enemy("swarm", enemy.x, enemy.y, enemy.target_index, enemy.path_index, allow_affix=False)
         minion.max_hp *= 0.55
         minion.hp = minion.max_hp
@@ -1737,13 +2095,31 @@ def get_upgrade_panel_rect():
     return pygame.Rect(MAP_WIDTH + 8, 286, UI_WIDTH - 16, 304)
 
 
+def visible_available_mutations(tower):
+    if tower is None or not tower.can_add_mutation():
+        return []
+    return tower.available_mutations[: max(0, MUTATION_SLOT_LIMIT - len(tower.mutations))]
+
+
+def get_mutation_button_rects(tower):
+    panel = get_upgrade_panel_rect()
+    rects = []
+    for index, mutation_key in enumerate(visible_available_mutations(tower)[:2]):
+        rect = pygame.Rect(panel.x + 14, panel.y + 104 + index * 40, panel.w - 28, 36)
+        rects.append((rect, mutation_key))
+    return rects
+
+
 def get_upgrade_button_rects(tower):
     panel = get_upgrade_panel_rect()
     options = get_upgrade_options(tower)
     rects = []
+    mutation_count = len(get_mutation_button_rects(tower))
 
     if options:
-        rect = pygame.Rect(panel.x + 14, panel.y + 106, panel.w - 28, 58)
+        y = panel.y + 106 + mutation_count * 40
+        height = 58 if mutation_count == 0 else 50 if mutation_count == 1 else 32
+        rect = pygame.Rect(panel.x + 14, y, panel.w - 28, height)
         rects.append((rect, options[0]))
 
     return rects
@@ -1772,6 +2148,12 @@ def handle_upgrade_panel_click(pos):
         if sell_tower(selected_tower):
             play_sound("sell", 0.08)
         return True
+
+    for rect, mutation_key in get_mutation_button_rects(selected_tower):
+        if rect.collidepoint(pos):
+            if selected_tower.apply_mutation(mutation_key):
+                play_sound("upgrade", 0.08)
+            return True
 
     for rect, option in get_upgrade_button_rects(selected_tower):
         if rect.collidepoint(pos):
@@ -1811,23 +2193,47 @@ def draw_upgrade_panel():
         panel.y + 58,
         (210, 210, 190),
     )
+    draw_small_text(
+        f"Mutations {len(selected_tower.mutations)}/{MUTATION_SLOT_LIMIT}",
+        panel.x + 14,
+        panel.y + 78,
+        (215, 225, 200),
+    )
+    badge_x = panel.x + 126
+    for index, mutation_key in enumerate(selected_tower.mutations):
+        mutation = MUTATION_TRAITS[mutation_key]
+        rect = pygame.Rect(badge_x + index * 42, panel.y + 76, 36, 18)
+        pygame.draw.rect(screen, (34, 38, 34), rect)
+        pygame.draw.rect(screen, mutation["color"], rect, 1)
+        draw_tiny_text(mutation["short"], rect.x + 5, rect.y + 3, mutation["color"])
     if selected_tower.tower_type and selected_tower.level >= BASE_MAX_TOWER_LEVEL and selected_tower.level < MAX_TOWER_LEVEL:
         needed = RESEARCH_UPGRADE_COSTS[selected_tower.level]
         min_towers = get_min_towers_for_upgrade(selected_tower.level)
         draw_small_text(
             f"Research {research_points}/{needed}  Towers {len(towers)}/{min_towers}",
             panel.x + 14,
-            panel.y + 78,
+            panel.y + 94,
             (230, 220, 150),
         )
 
+    for rect, mutation_key in get_mutation_button_rects(selected_tower):
+        mutation = MUTATION_TRAITS[mutation_key]
+        pygame.draw.rect(screen, (34, 42, 38), rect)
+        pygame.draw.rect(screen, mutation["color"], rect, 2)
+        draw_small_text(f"Mutate: {mutation['label']}", rect.x + 8, rect.y + 5, (245, 245, 235))
+        description = mutation["description"]
+        if len(description) > 34:
+            description = description[:33] + "."
+        draw_tiny_text(description, rect.x + 8, rect.y + 22, (215, 220, 200))
+
     options = get_upgrade_options(selected_tower)
     if not options:
-        draw_text("MAX LEVEL", panel.x + 72, panel.y + 112, (255, 255, 255))
+        max_y = panel.y + 112 + len(get_mutation_button_rects(selected_tower)) * 40
+        draw_text("MAX LEVEL", panel.x + 72, max_y, (255, 255, 255))
         if selected_tower.tower_type and selected_tower.level >= MAX_TOWER_LEVEL:
-            draw_small_text("Mastery capped for now", panel.x + 54, panel.y + 145, (190, 190, 180))
+            draw_small_text("Mastery capped for now", panel.x + 54, max_y + 33, (190, 190, 180))
         else:
-            draw_small_text("No further upgrades available", panel.x + 30, panel.y + 145, (190, 190, 180))
+            draw_small_text("No further upgrades available", panel.x + 30, max_y + 33, (190, 190, 180))
         draw_target_button()
         draw_sell_button()
         return
@@ -1845,10 +2251,11 @@ def draw_upgrade_panel():
         if option.get("research_cost", 0):
             price_text += f" R{option['research_cost']}"
         draw_small_text(price_text, rect.right - 84, rect.y + 6, text_color)
-        description = option["description"]
-        if len(description) > 30:
-            description = description[:29] + "."
-        draw_small_text(description, rect.x + 10, rect.y + 24, (205, 205, 190) if enabled else text_color)
+        if rect.h >= 42:
+            description = option["description"]
+            if len(description) > 30:
+                description = description[:29] + "."
+            draw_small_text(description, rect.x + 10, rect.y + 24, (205, 205, 190) if enabled else text_color)
 
     draw_sell_button()
     draw_target_button()
@@ -2047,7 +2454,7 @@ def draw_tower_shop():
         pygame.draw.rect(screen, data["color"] if affordable else (120, 70, 70), rect, 2)
         sprite = images.get("towers", {}).get(tower_type, {}).get("idle")
         if sprite:
-            mini = pygame.transform.scale(sprite, (24, 24))
+            mini = get_scaled_sprite(sprite, (24, 24))
             draw_sprite_centered(mini, rect.x + 17, rect.y + 16)
             text_x = rect.x + 32
         else:
@@ -2075,7 +2482,7 @@ def draw_wave_timeline():
         for icon_index, tower_type in enumerate(recommended[:2]):
             sprite = images.get("towers", {}).get(tower_type, {}).get("idle")
             if sprite:
-                mini = pygame.transform.scale(sprite, (18, 18))
+                mini = get_scaled_sprite(sprite, (18, 18))
                 draw_sprite_centered(mini, MAP_WIDTH + 218 + icon_index * 20, row_y + 8)
 
 
@@ -2093,7 +2500,7 @@ def draw_wave_warning_panel():
     for index, tower_type in enumerate(tower_types):
         sprite = images.get("towers", {}).get(tower_type, {}).get("idle")
         if sprite:
-            mini = pygame.transform.scale(sprite, (30, 30))
+            mini = get_scaled_sprite(sprite, (30, 30))
             draw_sprite_centered(mini, panel.right - 84 + index * 28, panel.y + 39)
 
     if money >= 1000:
@@ -2173,6 +2580,17 @@ def draw_sidebar_tooltips():
             return
 
     if selected_tower:
+        for rect, mutation_key in get_mutation_button_rects(selected_tower):
+            if rect.collidepoint(mouse_pos):
+                mutation = MUTATION_TRAITS[mutation_key]
+                lines = [
+                    f"Free mutation: {mutation['label']}",
+                    mutation["description"],
+                    "Earned from this tower's behavior",
+                ]
+                draw_tooltip(lines, rect.y - 82)
+                return
+
         for rect, option in get_upgrade_button_rects(selected_tower):
             if rect.collidepoint(mouse_pos):
                 cost_line = f"Cost: ${option['cost']}"
@@ -2250,15 +2668,21 @@ def reset_game():
     boss_warning_timer = 0
     endless_mode = False
     run_stars_awarded = False
+    particle_manager.clear()
 
 
-def run():
+def run(argv=None):
     global window_width, window_height, selected_tower, selected_build_type
     global sfx_enabled, music_enabled, screen_shake_timer, screen_shake_strength, boss_warning_timer
     global money, research_points, wave, spawned_this_wave, spawn_timer, wave_active
     global victory, game_over, lives, score
+    global render_options, particle_manager, renderer_backend
 
     running = True
+    render_options = parse_runtime_options(argv)
+    particle_manager = ParticleManager(render_options.max_particles)
+    renderer_backend = make_renderer(render_options, (WIDTH, HEIGHT), "Tower Defense v0.1")
+    window_width, window_height = renderer_backend.window_size
     init_images()
     init_sounds()
     update_music_state()
@@ -2280,7 +2704,8 @@ def run():
                 running = False
 
             if event.type == pygame.VIDEORESIZE:
-                window_width, window_height = event.w, event.h
+                renderer_backend.resize((event.w, event.h))
+                window_width, window_height = renderer_backend.window_size
                 update_window_transform()
 
             if event.type == pygame.KEYDOWN:
@@ -2333,12 +2758,16 @@ def run():
 
             if wave_active and spawned_this_wave < enemies_per_wave:
                 if spawn_timer >= spawn_interval:
-                    spawn_enemy()
-                    spawned_this_wave += 1
-                    spawn_timer = 0
+                    if spawn_enemy():
+                        spawned_this_wave += 1
+                        spawn_timer = 0
+                    else:
+                        spawn_timer = 0
 
             if wave_active and spawned_this_wave >= enemies_per_wave and len(enemies) == 0:
                 completed_wave = wave
+                for tower in towers:
+                    tower.waves_present += 1
                 earned_research = get_research_reward(completed_wave)
                 money += START_WAVE_BONUS + wave
                 research_points += earned_research
@@ -2366,6 +2795,7 @@ def run():
 
                 elif enemy.hp <= 0:
                     enemies.remove(enemy)
+                    award_enemy_death_credit(enemy)
                     if enemy.death_spawns:
                         spawn_death_minions(enemy)
                     money += enemy.reward
@@ -2387,6 +2817,11 @@ def run():
                 effect.update(dt)
                 if effect.dead:
                     effects.remove(effect)
+
+            if render_options.enable_particles:
+                particle_manager.update(dt)
+
+            evaluate_all_mutations()
 
         screen.fill((12, 14, 12))
 
@@ -2412,6 +2847,9 @@ def run():
 
         for effect in effects:
             effect.draw()
+
+        if render_options.enable_particles:
+            particle_manager.draw(screen)
 
         draw_text(f"Money: ${money}", 15, 15)
         draw_text(f"Lives: {lives}", 150, 15)
@@ -2440,20 +2878,18 @@ def run():
 
         draw_end_options()
 
-        window.fill((12, 14, 12))
+        window_width, window_height = renderer_backend.window_size
         update_window_transform()
-        draw_width = int(WIDTH * scale)
-        draw_height = int(HEIGHT * scale)
-        scaled_screen = pygame.transform.smoothscale(screen, (draw_width, draw_height))
         shake_x = 0
         shake_y = 0
-        if screen_shake_timer > 0 and screen_shake_strength > 0:
+        if render_options.enable_screen_shake and screen_shake_timer > 0 and screen_shake_strength > 0:
             ticks = pygame.time.get_ticks()
             shake_x = int(math.sin(ticks * 0.09) * screen_shake_strength)
             shake_y = int(math.cos(ticks * 0.11) * screen_shake_strength)
-        window.blit(scaled_screen, (offset_x + shake_x, offset_y + shake_y))
-        pygame.display.flip()
+        renderer_backend.present(screen, scale, offset_x, offset_y, shake_x, shake_y, render_options.enable_glow)
 
+    if renderer_backend is not None:
+        renderer_backend.close()
     pygame.quit()
     sys.exit()
 

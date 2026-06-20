@@ -1,0 +1,2 @@
+pygame>=2.6.0
+moderngl>=5.10.0

@@ -12,6 +12,27 @@ For development, run:
 .\.venv\Scripts\python.exe tower_defense.py
 ```
 
+Use a specific renderer:
+
+```powershell
+.\.venv\Scripts\python.exe tower_defense.py --renderer pygame
+.\.venv\Scripts\python.exe tower_defense.py --renderer opengl
+```
+
+OpenGL mode uses ModernGL. If ModernGL is missing or the OpenGL context fails, the game prints a warning and falls back to the normal Pygame renderer.
+
+Install packages:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Optional graphics flags:
+
+```powershell
+.\.venv\Scripts\python.exe tower_defense.py --disable-glow --disable-particles --disable-screen-shake
+```
+
 The root `tower_defense.py` file is a tiny compatibility launcher. The game code lives in `td_game/`.
 
 ## Regenerate Assets

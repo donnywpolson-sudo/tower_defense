@@ -75,6 +75,45 @@ HIGH_TIER_MIN_TOWERS = {
     9: 6,
 }
 
+MUTATION_TRAITS = {
+    "fast_hunter": {
+        "label": "Fast Hunter",
+        "short": "SPD",
+        "description": "Bonus vs fast enemies; hits briefly slow them",
+        "color": (235, 95, 190),
+    },
+    "armor_piercer": {
+        "label": "Armor Piercer",
+        "short": "AP",
+        "description": "Bonus vs shields and armor; shield hits count as pierce",
+        "color": (190, 195, 210),
+    },
+    "field_medic": {
+        "label": "Field Medic",
+        "short": "MED",
+        "description": "Low-kill tower grants a small nearby damage/rate aura",
+        "color": (150, 225, 145),
+    },
+    "corrupted": {
+        "label": "Corrupted",
+        "short": "COR",
+        "description": "Earned in kill zones; bonus vs low-health enemies",
+        "color": (170, 90, 210),
+    },
+    "swarm_reaper": {
+        "label": "Swarm Reaper",
+        "short": "SWM",
+        "description": "Bonus vs swarm/split enemies with small cleave",
+        "color": (240, 145, 85),
+    },
+    "sky_watcher": {
+        "label": "Sky Watcher",
+        "short": "AIR",
+        "description": "Learns anti-air and deals bonus to flying enemies",
+        "color": (165, 205, 255),
+    },
+}
+
 TOWER_TYPES = {
     "archer": {
         "label": "Archer",

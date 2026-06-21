@@ -56,8 +56,6 @@ run_damage_bonus = 0.0
 run_range_bonus = 0.0
 next_wave_bounty_bonus = 0
 next_wave_bounty_wave = None
-selected_ability = None
-ability_cooldowns = {"emp": 0.0, "quarantine": 0.0}
 
 enemies = []
 towers = []
@@ -69,7 +67,6 @@ spawned_this_wave = 0
 wave_active = False
 selected_tower = None
 selected_build_type = None
-selected_shop_tab = next(iter(SHOP_TABS))
 endless_mode = False
 stars = 0
 starting_money_bonus_level = 0
@@ -96,9 +93,46 @@ glow_cache = {}
 scaled_sprite_cache = {}
 
 COMMANDER_AURA_RADIUS = 118
-EMP_COOLDOWN = 18.0
-QUARANTINE_COOLDOWN = 14.0
-QUARANTINE_RADIUS = 116
+PACKET_TRAIL_LIMIT = 8
+PACKET_TRAIL_LIFETIME = 0.34
+CORE_WARNING_RATIO = 0.35
+RANSOMWARE_LOCK_RADIUS = 150
+RANSOMWARE_LOCK_DURATION = 2.4
+RANSOMWARE_LOCK_INTERVAL = 5.8
+
+ROLE_ICON_COLORS = {
+    "fast": (255, 230, 100),
+    "single": (210, 235, 245),
+    "aoe": (235, 145, 85),
+    "slow": (150, 225, 255),
+    "dot": (125, 235, 95),
+    "support": (245, 225, 145),
+    "air": (185, 205, 255),
+    "hold": (220, 170, 95),
+    "armor": (210, 210, 225),
+}
+
+TOWER_ROLE_ICONS = {
+    "machine_gun": ("fast", "single"),
+    "cannon": ("aoe", "armor"),
+    "frost": ("slow", "aoe"),
+    "poison": ("dot", "slow"),
+    "support": ("support", "single"),
+    "sniper": ("single", "armor", "air"),
+    "tesla": ("air", "aoe", "fast"),
+    "barracks": ("hold", "slow"),
+}
+
+TOWER_TOOLTIP_SUMMARY = {
+    "machine_gun": ("Fast single-target", "Best: swarms", "Weak: armor"),
+    "cannon": ("Slow massive AoE", "Best: groups", "Weak: flying"),
+    "frost": ("Slow and freeze", "Best: fast", "Weak: damage"),
+    "poison": ("Poison and burn", "Best: tanks", "Weak: leaks"),
+    "support": ("Mana support casts", "Best: clusters", "Weak: solo"),
+    "sniper": ("Long-range execute", "Best: armor", "Weak: swarms"),
+    "tesla": ("Chain anti-air", "Best: flying", "Weak: cost"),
+    "barracks": ("Ground hold zone", "Best: lanes", "Weak: flying"),
+}
 
 CARD_POOL = {
     "cpu_cache": {
@@ -233,8 +267,47 @@ def get_animation_frame(options, speed=220):
     return options[index]
 
 
+def clamp(value, low, high):
+    return max(low, min(high, value))
+
+
+def blend_color(color, target, amount):
+    amount = clamp(amount, 0, 1)
+    return tuple(int(channel + (target_channel - channel) * amount) for channel, target_channel in zip(color, target))
+
+
+def packet_status_color(enemy):
+    if enemy.commander:
+        return (245, 220, 90)
+    if enemy.boss:
+        return (255, 90, 80)
+    if enemy.freeze_timer > 0:
+        return (190, 245, 255)
+    if enemy.slow_timer > 0:
+        return (105, 190, 255)
+    if enemy.poison_timer > 0:
+        return (130, 245, 110)
+    if enemy.burn_timer > 0:
+        return (255, 130, 70)
+    if enemy.shield_hits > 0 or enemy.affix == "armored":
+        return (220, 230, 255)
+    if enemy.affix and enemy.affix in WAVE_MODIFIERS:
+        return WAVE_MODIFIERS[enemy.affix]["color"]
+    if enemy.kind == "fast":
+        return (235, 95, 190)
+    if enemy.flying:
+        return (185, 120, 245)
+    return (95, 235, 160)
+
+
 def active_bosses():
     return [enemy for enemy in enemies if enemy.boss]
+
+
+def get_boss_protocol_for_wave(wave_number):
+    if wave_number in (10, MAX_WAVE):
+        return "ransomware"
+    return None
 
 
 def get_wave_recommendation(wave_number=None):
@@ -243,37 +316,41 @@ def get_wave_recommendation(wave_number=None):
     affix = get_wave_affix(preview_wave)
     modifier = get_wave_modifier_data(preview_wave)
     bosses = get_boss_count_for_wave(preview_wave)
+    boss_protocol = get_boss_protocol_for_wave(preview_wave)
     commanders = get_commander_count_for_wave(preview_wave)
     recommendations = []
     tower_types = []
 
     if bosses:
-        recommendations.append("Boss incoming. Add Sniper/Cannon damage.")
+        recommendations.append("Boss incoming. Add Sniper or Artillery.")
         tower_types.extend(["sniper", "cannon"])
+    if boss_protocol == "ransomware":
+        recommendations.append("Ransomware: locks towers. Spread defenses.")
+        tower_types.extend(["support", "sniper"])
     if commanders:
         recommendations.append("Commander packet: focus-fire the aura source.")
         tower_types.extend(["sniper", "tesla"])
     if modifier:
         recommendations.append(modifier["recommendation"])
     if kind == "shield":
-        recommendations.append("Shield: Sniper or Cannon. Tesla is weaker.")
+        recommendations.append("Shield: Sniper or Artillery.")
         tower_types.extend(["sniper", "cannon"])
     if kind == "armored" or affix == "armored":
-        recommendations.append("Armored: Sniper pierce or Cannon.")
+        recommendations.append("Armored: Sniper pierce or Artillery.")
         tower_types.extend(["sniper", "cannon"])
     if kind == "flying":
         recommendations.append("Flying: Tesla or Sniper.")
         tower_types.extend(["tesla", "sniper"])
     if kind in ("fast",) or affix == "haste":
-        recommendations.append("Fast/Haste: Frost and Barracks control.")
+        recommendations.append("Fast/Haste: Frost and Garrison control.")
         tower_types.extend(["frost", "barracks"])
     if kind == "swarm" or affix == "split":
-        recommendations.append("Split/Swarm: Cannon splash or Machine Gun cleanup.")
+        recommendations.append("Split/Swarm: Artillery splash or Gunner cleanup.")
         tower_types.extend(["cannon", "machine_gun"])
 
     if not recommendations:
         recommendations.append("Balanced wave. Upgrade your core towers.")
-        tower_types.extend(["archer", "support"])
+        tower_types.extend(["machine_gun", "support"])
 
     unique_towers = []
     for tower_type in tower_types:
@@ -311,9 +388,10 @@ def apply_synergy_damage(tower_type, enemy, amount, damage_type):
     elif tower_type == "machine_gun" and enemy.slow_timer > 0 and has_tower_type("frost"):
         multiplier *= 1.15
         labels.append("FOCUS")
-    elif tower_type == "archer" and enemy.marked_timer > 0:
-        multiplier *= 1.15
-        labels.append("MARKED")
+
+    if enemy.marked_timer > 0 and tower_type in ("archer", "machine_gun", "sniper", "tesla"):
+        multiplier *= 1.12
+        labels.append("SCAN")
 
     return amount * multiplier, labels
 
@@ -673,6 +751,7 @@ class Enemy:
         affix=None,
         path_index=0,
         is_split_child=False,
+        boss_protocol=None,
     ):
         self.path_index = path_index % len(current_paths())
         self.path = current_paths()[self.path_index]
@@ -690,6 +769,7 @@ class Enemy:
         self.death_spawns = death_spawns
         self.affix = affix
         self.is_split_child = is_split_child
+        self.boss_protocol = boss_protocol
         self.leak_damage = 5 if boss else 1
         self.radius = 10 if is_split_child else 26 if boss else 18 if commander else 15
         self.reached_end = False
@@ -711,6 +791,9 @@ class Enemy:
         self.barracks_hold_timer = 0
         self.commander_aura_timer = 0
         self.last_damaging_tower = None
+        self.trail_points = []
+        self.trail_sample_timer = 0
+        self.ransomware_lock_timer = 1.2 if boss_protocol == "ransomware" else 0
         apply_modifier_effects(self, affix)
 
     def behavior_tags(self):
@@ -802,6 +885,8 @@ class Enemy:
             self.barracks_hold_timer -= dt
         if self.commander_aura_timer > 0:
             self.commander_aura_timer -= dt
+        self.update_packet_trail(dt)
+        self.update_boss_protocol(dt)
 
         if self.vulnerable_timer > 0:
             self.vulnerable_timer -= dt
@@ -861,6 +946,80 @@ class Enemy:
         self.x += (dx / distance) * current_speed * dt
         self.y += (dy / distance) * current_speed * dt
 
+    def update_boss_protocol(self, dt):
+        if self.boss_protocol != "ransomware" or self.hp <= 0:
+            return
+
+        self.ransomware_lock_timer -= dt
+        if self.ransomware_lock_timer > 0:
+            return
+
+        locked = self.trigger_ransomware_lock()
+        self.ransomware_lock_timer = RANSOMWARE_LOCK_INTERVAL if locked else 1.2
+
+    def trigger_ransomware_lock(self):
+        candidates = [
+            tower for tower in towers
+            if tower.locked_timer <= 0
+            and dist((self.x, self.y), (tower.x, tower.y)) <= RANSOMWARE_LOCK_RADIUS
+        ]
+        if not candidates:
+            return False
+
+        target = max(candidates, key=lambda tower: (tower.level, -dist((self.x, self.y), (tower.x, tower.y))))
+        target.locked_timer = RANSOMWARE_LOCK_DURATION
+        target.cooldown = max(target.cooldown, min(RANSOMWARE_LOCK_DURATION, 0.8))
+        add_effect(LightningEffect((self.x, self.y), (target.x, target.y), (255, 90, 120), 0.16))
+        add_effect(SparkEffect(target.x, target.y, (255, 90, 120), 26, 0.28, "shield_break"))
+        emit_particles(target.x, target.y, (255, 90, 120), 10, 75, 4, 0.35)
+        add_floating_text(target.x - 24, target.y - 48, "LOCKED", (255, 120, 145))
+        return True
+
+    def update_packet_trail(self, dt):
+        self.trail_points = [
+            (x, y, age + dt)
+            for x, y, age in self.trail_points
+            if age + dt < PACKET_TRAIL_LIFETIME
+        ]
+
+        if len(enemies) >= VERY_BUSY_ENEMY_COUNT:
+            return
+
+        self.trail_sample_timer -= dt
+        if self.trail_sample_timer > 0:
+            return
+
+        self.trail_sample_timer = 0.045 if self.kind == "fast" or self.affix == "haste" else 0.065
+        self.trail_points.append((self.x, self.y, 0))
+        if len(self.trail_points) > PACKET_TRAIL_LIMIT:
+            self.trail_points = self.trail_points[-PACKET_TRAIL_LIMIT:]
+
+    def draw_packet_trail(self, color):
+        if not self.trail_points or len(enemies) >= VERY_BUSY_ENEMY_COUNT:
+            return
+
+        for index, (x, y, age) in enumerate(self.trail_points):
+            fade = max(0, 1 - age / PACKET_TRAIL_LIFETIME)
+            fade *= (index + 1) / max(1, len(self.trail_points))
+            if fade <= 0:
+                continue
+            radius = max(2, int(self.radius * (0.22 + 0.26 * fade)))
+            trail_color = blend_color(color, (8, 13, 12), 0.38)
+            draw_glow(x, y, color, radius + 5, int(26 * fade))
+            pygame.draw.circle(screen, trail_color, (int(x), int(y)), radius)
+
+    def draw_scan_brackets(self):
+        pulse = (math.sin(pygame.time.get_ticks() * 0.012) + 1) * 0.5
+        radius = self.radius + 10 + int(pulse * 3)
+        color = (120, 235, 255)
+        pygame.draw.circle(screen, color, (int(self.x), int(self.y)), radius, 1)
+        for sx in (-1, 1):
+            x = int(self.x + sx * radius)
+            pygame.draw.line(screen, color, (x, int(self.y - 7)), (x, int(self.y + 7)), 2)
+        for sy in (-1, 1):
+            y = int(self.y + sy * radius)
+            pygame.draw.line(screen, color, (int(self.x - 7), y), (int(self.x + 7), y), 2)
+
     def draw(self):
         color = (210, 60, 60)
         if self.kind == "fast":
@@ -891,6 +1050,8 @@ class Enemy:
         if self.poison_timer > 0:
             color = (110, 220, 80)
 
+        signal_color = packet_status_color(self)
+        self.draw_packet_trail(signal_color)
         pygame.draw.ellipse(screen, (0, 0, 0, 85), (int(self.x - self.radius), int(self.y + self.radius * 0.58), self.radius * 2, max(4, self.radius // 2)))
         sprite_key = "boss" if self.boss else "shield" if self.commander else "split_child" if self.is_split_child else "flying" if self.flying else "shield_cracked" if self.kind == "shield" and self.shield_hits <= 0 else self.kind
         frames = images.get("enemies", {}).get(sprite_key, {})
@@ -919,8 +1080,12 @@ class Enemy:
         if self.flying and not crowded:
             pygame.draw.circle(screen, (235, 225, 255), (int(self.x), int(self.y)), self.radius + 4, 1)
         if self.affix and not crowded:
-            pygame.draw.circle(screen, (255, 255, 140), (int(self.x), int(self.y)), self.radius + 8, 1)
+            affix_color = WAVE_MODIFIERS.get(self.affix, {}).get("color", (255, 255, 140))
+            pygame.draw.circle(screen, affix_color, (int(self.x), int(self.y)), self.radius + 8, 1)
+        if self.marked_timer > 0 and not crowded:
+            self.draw_scan_brackets()
         if self.commander and not crowded:
+            pygame.draw.circle(screen, (120, 105, 45), (int(self.x), int(self.y)), COMMANDER_AURA_RADIUS, 1)
             pygame.draw.circle(screen, (245, 220, 90), (int(self.x), int(self.y)), self.radius + 10, 3)
             draw_tiny_text("CMD", int(self.x - 15), int(self.y - self.radius - 30), (255, 235, 130))
         elif self.commander_aura_timer > 0 and not crowded:
@@ -958,6 +1123,7 @@ class Tower:
         self.total_damage = 0
         self.mastery_xp = 0
         self.fire_anim_timer = 0
+        self.locked_timer = 0
         self.mutations = []
         self.available_mutations = []
         self.notified_mutations = set()
@@ -973,6 +1139,13 @@ class Tower:
         self.gold_income_timer = 0
         self.gold_income_wave = wave
         self.gold_income_earned = 0
+        self.support_mana = 0.0
+        self.support_max_mana = 100.0
+        self.support_cast_cooldown = 0.0
+        self.support_buff_timer = 0.0
+        self.support_damage_bonus = 0.0
+        self.support_rate_bonus = 0.0
+        self.support_casts = 0
         if tower_type:
             self.tower_type, self.selected_branch = normalize_tower_type(tower_type)
             self.level = 2
@@ -1327,12 +1500,28 @@ class Tower:
         return 115 if self.level < PARAGON_LEVEL else 95
 
     def update(self, dt):
+        if self.locked_timer > 0:
+            self.locked_timer = max(0, self.locked_timer - dt)
+
+        if self.support_buff_timer > 0:
+            self.support_buff_timer = max(0.0, self.support_buff_timer - dt)
+            if self.support_buff_timer == 0:
+                self.support_damage_bonus = 0.0
+                self.support_rate_bonus = 0.0
+
+        if self.support_cast_cooldown > 0:
+            self.support_cast_cooldown = max(0.0, self.support_cast_cooldown - dt)
+
         self.update_mutation_timers(dt)
-        if self.tower_type == "gold":
-            self.update_gold_income(dt)
 
         if self.fire_anim_timer > 0:
             self.fire_anim_timer -= dt
+
+        if self.locked_timer > 0:
+            return
+
+        if self.tower_type == "gold":
+            self.update_gold_income(dt)
 
         if self.tower_type == "support":
             self.update_support(dt)
@@ -1415,25 +1604,119 @@ class Tower:
         if not wave_active or not enemies:
             return
 
-        assisted = 0
-        for tower in towers:
-            if tower == self or tower.tower_type == "support":
-                continue
-            if self.is_paragon or dist((self.x, self.y), (tower.x, tower.y)) <= self.range:
-                assisted += 1
+        allies = self.support_allies()
+        enemy_target = self.support_enemy_target()
+        if not allies and enemy_target is None:
+            return
 
-        if self.branch_has("paint"):
-            valid = [enemy for enemy in enemies if dist((self.x, self.y), (enemy.x, enemy.y)) <= self.effective_range()]
-            if valid:
-                target = max(valid, key=lambda enemy: enemy.progress())
-                target.marked_timer = max(target.marked_timer, 0.45)
-                target.vulnerable_timer = max(target.vulnerable_timer, 0.35)
-                target.damage_multiplier = max(target.damage_multiplier, 1.05)
+        self.support_mana = min(self.support_max_mana, self.support_mana + self.support_mana_rate() * dt)
+        if allies:
+            self.mastery_xp += dt * min(1.2, len(allies) * 0.12)
+        if self.support_cast_cooldown > 0 or self.support_mana < self.support_cast_cost():
+            return
 
-        if assisted:
-            self.mastery_xp += dt * min(1.5, assisted * 0.18)
-            if self.branch_has("research"):
-                self.mastery_xp += dt * min(0.8, assisted * 0.08)
+        buff_target = self.support_buff_target(allies)
+        if buff_target is not None:
+            self.cast_support_buff(buff_target)
+        elif enemy_target is not None:
+            self.cast_support_debuff(enemy_target)
+
+    def support_cast_range(self):
+        return self.range * (1 + run_range_bonus)
+
+    def support_cast_cost(self):
+        return 30.0 if self.branch_has("paint") or self.branch_has("threat_scan") else 35.0
+
+    def support_mana_rate(self):
+        rate = 10.0 + self.level * 2.0
+        if self.branch_has("research"):
+            rate += 3.0
+        if self.is_paragon:
+            rate += 5.0
+        return rate
+
+    def support_allies(self):
+        support_range = self.support_cast_range()
+        return [
+            tower for tower in towers
+            if tower is not self
+            and tower.tower_type not in (None, "support")
+            and (self.is_paragon or dist((self.x, self.y), (tower.x, tower.y)) <= support_range)
+        ]
+
+    def support_enemy_target(self):
+        support_range = self.support_cast_range()
+        valid = [
+            enemy for enemy in enemies
+            if self.is_paragon or dist((self.x, self.y), (enemy.x, enemy.y)) <= support_range
+        ]
+        if not valid:
+            return None
+        return max(valid, key=lambda enemy: (enemy.progress(), enemy.max_hp))
+
+    def support_buff_target(self, allies):
+        ready = [tower for tower in allies if tower.support_buff_timer <= 1.0]
+        if not ready:
+            return None
+        return min(ready, key=lambda tower: (tower.support_buff_timer, dist((self.x, self.y), (tower.x, tower.y))))
+
+    def cast_support_buff(self, target):
+        cost = self.support_cast_cost()
+        if self.support_mana < cost:
+            return False
+
+        duration = 4.2 + self.level * 0.28
+        damage_bonus = 0.08 + self.level * 0.018
+        rate_bonus = 0.06 + self.level * 0.014
+        if self.branch_has("damage_buff"):
+            damage_bonus += 0.04
+        if self.branch_has("rate_buff"):
+            rate_bonus += 0.04
+        if self.branch_has("range_buff"):
+            duration += 0.8
+        if self.is_paragon:
+            duration += 1.4
+            damage_bonus += 0.06
+            rate_bonus += 0.04
+
+        target.support_buff_timer = max(target.support_buff_timer, duration)
+        target.support_damage_bonus = max(target.support_damage_bonus, min(0.30, damage_bonus))
+        target.support_rate_bonus = max(target.support_rate_bonus, min(0.24, rate_bonus))
+        self.finish_support_cast(cost, 1.35)
+        add_effect(SparkEffect(target.x, target.y, TOWER_TYPES["support"]["projectile_color"], 18, 0.28, "coin_sparkle"))
+        add_floating_text(target.x - 16, target.y - 44, "BUFF", TOWER_TYPES["support"]["projectile_color"])
+        play_sound("upgrade", 0.05)
+        return True
+
+    def cast_support_debuff(self, enemy):
+        cost = self.support_cast_cost()
+        if self.support_mana < cost:
+            return False
+
+        duration = 2.8 + self.level * 0.22
+        enemy.marked_timer = max(enemy.marked_timer, duration)
+        enemy.vulnerable_timer = max(enemy.vulnerable_timer, duration * 0.85)
+        enemy.damage_multiplier = max(enemy.damage_multiplier, 1.08 + min(0.12, self.level * 0.012))
+        if self.branch_has("paint") or self.branch_has("threat_scan") or self.level >= 4:
+            enemy.slow_timer = max(enemy.slow_timer, duration * 0.6)
+            enemy.slow_multiplier = min(enemy.slow_multiplier, 0.78 if self.level < PARAGON_LEVEL else 0.68)
+
+        self.finish_support_cast(cost, 1.15)
+        add_effect(SparkEffect(enemy.x, enemy.y, (180, 215, 245), enemy.radius + 10, 0.24, "lightning_spark"))
+        add_floating_text(enemy.x - 18, enemy.y - 44, "HEX", (180, 215, 245))
+        play_sound("chain", 0.04)
+        return True
+
+    def finish_support_cast(self, cost, cooldown):
+        global research_points
+
+        self.support_mana = max(0.0, self.support_mana - cost)
+        self.support_cast_cooldown = cooldown
+        self.support_casts += 1
+        self.mastery_xp += 0.6
+        if self.branch_has("research") and self.support_casts % 3 == 0:
+            research_points += 1
+            add_floating_text(self.x - 20, self.y - 44, "+1 Research", (150, 220, 255))
 
     def find_target(self):
         valid = []
@@ -1468,16 +1751,11 @@ class Tower:
 
     def support_bonus(self, bonus_type):
         bonus = 0
-        for tower in towers:
-            if tower == self or tower.tower_type != "support":
-                continue
-            if tower.is_paragon or dist((self.x, self.y), (tower.x, tower.y)) <= tower.range:
-                if bonus_type == "damage" and tower.level >= 2:
-                    bonus = max(bonus, 0.30 if tower.is_paragon else 0.20 if tower.level >= 5 else 0.12)
-                elif bonus_type == "rate" and tower.level >= 3:
-                    bonus = max(bonus, 0.25 if tower.is_paragon else 0.16 if tower.level >= 5 else 0.10)
-                elif bonus_type == "range" and tower.level >= 4:
-                    bonus = max(bonus, 0.25 if tower.is_paragon else 0.15 if tower.level >= 5 else 0.10)
+        if self.support_buff_timer > 0:
+            if bonus_type == "damage":
+                bonus = max(bonus, self.support_damage_bonus)
+            elif bonus_type == "rate":
+                bonus = max(bonus, self.support_rate_bonus)
         for tower in towers:
             if tower == self or not tower.has_mutation("field_medic"):
                 continue
@@ -1512,6 +1790,11 @@ class Tower:
 
         pygame.draw.ellipse(screen, (0, 0, 0, 85), (self.x - 20, self.y + 18, 40, 12))
         draw_glow(self.x, self.y, color, 28 if self.is_paragon else 22, 36 if self.is_paragon else 24)
+        if self.fire_anim_timer > 0 and self.tower_type:
+            flash = clamp(self.fire_anim_timer / 0.12, 0, 1)
+            ring_radius = int(20 + (1 - flash) * 13)
+            pygame.draw.circle(screen, blend_color(color, (255, 255, 255), 0.35), (self.x, self.y), ring_radius, 2)
+            draw_glow(self.x, self.y, color, ring_radius + 6, int(42 * flash))
         sprite = None
         if self.tower_type:
             frames = images.get("towers", {}).get(self.tower_type, {})
@@ -1521,9 +1804,22 @@ class Tower:
                 sprite = get_animation_frame([frames.get("idle_1"), frames.get("idle_2")], 420) or frames.get("idle")
         if not draw_sprite_centered(screen, sprite, self.x, self.y):
             self.draw_figurine(color)
+        if self.locked_timer > 0:
+            lock_color = (255, 90, 120)
+            pulse = (math.sin(pygame.time.get_ticks() * 0.018) + 1) * 0.5
+            radius = 27 + int(pulse * 4)
+            draw_glow(self.x, self.y, lock_color, radius + 6, 38)
+            pygame.draw.circle(screen, lock_color, (self.x, self.y), radius, 2)
+            pygame.draw.line(screen, lock_color, (self.x - 13, self.y - 13), (self.x + 13, self.y + 13), 3)
+            pygame.draw.line(screen, lock_color, (self.x + 13, self.y - 13), (self.x - 13, self.y + 13), 3)
+            draw_tiny_text("LOCK", self.x - 16, self.y - 38, (255, 150, 170))
         if selected_tower == self and (self.tower_type == "support" or self.has_mutation("field_medic")):
             aura_color = (245, 225, 145) if self.tower_type == "support" else MUTATION_TRAITS["field_medic"]["color"]
             pygame.draw.circle(screen, aura_color, (self.x, self.y), int(self.effective_range()), 1)
+        if self.support_buff_timer > 0:
+            buff_color = TOWER_TYPES["support"]["projectile_color"]
+            pygame.draw.circle(screen, buff_color, (self.x, self.y), 25, 2)
+            draw_tiny_text("BUFF", self.x - 17, self.y - 42, buff_color)
         if self.is_paragon:
             pygame.draw.circle(screen, (255, 255, 255), (self.x, self.y), 23, 2)
         for index, mutation_key in enumerate(self.mutations[:MUTATION_SLOT_LIMIT]):
@@ -1966,7 +2262,7 @@ class Projectile:
 
         if self.tower_type == "sniper":
             self.target.marked_timer = max(self.target.marked_timer, 2.0)
-            add_floating_text(self.target.x - 16, self.target.y - 50, "MARKED", (245, 245, 230))
+            add_floating_text(self.target.x - 16, self.target.y - 50, "SCANNED", (150, 235, 255))
             if self.tower_level >= 3:
                 self.target.shield_hits = max(0, self.target.shield_hits - 1)
             if self.tower_level >= 4:
@@ -2097,7 +2393,7 @@ class Projectile:
             self.target.marked_timer = max(self.target.marked_timer, mark_time)
             self.target.vulnerable_timer = max(self.target.vulnerable_timer, 0.8)
             self.target.damage_multiplier = max(self.target.damage_multiplier, 1.08)
-            add_floating_text(self.target.x - 18, self.target.y - 50, "PAINT", branch["color"])
+            add_floating_text(self.target.x - 18, self.target.y - 50, "SCAN", branch["color"])
 
         if "poison" in mechanics:
             poison_dps = self.damage * (0.12 + tower_level * 0.025)
@@ -2318,23 +2614,85 @@ def draw_terrain():
             pygame.draw.rect(screen, color, patch, border_radius=6)
 
 
+def draw_portal_sparks(marker, color, radius, ticks, count=4):
+    for index in range(count):
+        angle = ticks * 0.006 + index * math.tau / count
+        spark_x = int(marker[0] + math.cos(angle) * radius)
+        spark_y = int(marker[1] + math.sin(angle) * radius * 0.64)
+        pygame.draw.circle(screen, color, (spark_x, spark_y), 2 + index % 2)
+
+
+def draw_signal_spawn_marker(marker):
+    ticks = pygame.time.get_ticks()
+    pulse = (math.sin(ticks * 0.009) + 1) * 0.5
+    color = (78, 238, 198)
+    accent = (105, 190, 255)
+    radius = 24 + int(pulse * 3)
+    arc_rect = pygame.Rect(marker[0] - radius + 3, marker[1] - radius + 3, (radius - 3) * 2, (radius - 3) * 2)
+
+    draw_glow(marker[0], marker[1], color, radius + 10, 50)
+    pygame.draw.circle(screen, (12, 40, 38), marker, radius)
+    pygame.draw.circle(screen, color, marker, radius, 3)
+    pygame.draw.circle(screen, accent, marker, radius - 8, 2)
+    pygame.draw.arc(screen, color, arc_rect, ticks * 0.006, ticks * 0.006 + math.pi * 0.92, 3)
+    pygame.draw.arc(screen, accent, arc_rect.inflate(-10, -10), ticks * 0.006 + math.pi, ticks * 0.006 + math.pi * 1.72, 2)
+
+    portal_rect = pygame.Rect(marker[0] - 9, marker[1] - 16, 18, 32)
+    pygame.draw.ellipse(screen, (5, 24, 28), portal_rect)
+    pygame.draw.ellipse(screen, (218, 255, 236), portal_rect, 2)
+    pygame.draw.line(screen, color, (marker[0], marker[1] - 10), (marker[0], marker[1] + 10), 2)
+    draw_portal_sparks(marker, (196, 255, 230), radius + 4, ticks)
+
+
+def draw_signal_core_marker(marker):
+    integrity = clamp(lives / STARTING_LIVES, 0, 1)
+    ticks = pygame.time.get_ticks()
+    pulse = (math.sin(ticks * 0.008) + 1) * 0.5
+    warning = integrity <= CORE_WARNING_RATIO
+    color = (255, 90, 80) if warning else blend_color((255, 205, 82), (255, 115, 86), 1 - integrity)
+    accent = (255, 242, 164) if not warning else (255, 178, 150)
+    ring_radius = 25 + int(pulse * (8 if warning else 4))
+
+    draw_glow(marker[0], marker[1], color, ring_radius + 8, 54 if warning else 40)
+    pygame.draw.circle(screen, (55, 38, 24), marker, ring_radius)
+    pygame.draw.circle(screen, color, marker, ring_radius, 2)
+    pygame.draw.arc(
+        screen,
+        accent,
+        pygame.Rect(marker[0] - ring_radius + 5, marker[1] - ring_radius + 5, (ring_radius - 5) * 2, (ring_radius - 5) * 2),
+        ticks * -0.005,
+        ticks * -0.005 + math.pi * 1.05,
+        3,
+    )
+    pygame.draw.polygon(
+        screen,
+        accent,
+        [
+            (marker[0], marker[1] - 16),
+            (marker[0] + 16, marker[1]),
+            (marker[0], marker[1] + 16),
+            (marker[0] - 16, marker[1]),
+        ],
+        2,
+    )
+    core_rect = pygame.Rect(marker[0] - 9, marker[1] - 9, 18, 18)
+    pygame.draw.rect(screen, (28, 24, 20), core_rect, border_radius=3)
+    pygame.draw.rect(screen, color, core_rect, 2, border_radius=3)
+    pygame.draw.line(screen, accent, (marker[0] - 5, marker[1]), (marker[0] + 5, marker[1]), 2)
+    pygame.draw.line(screen, accent, (marker[0], marker[1] - 5), (marker[0], marker[1] + 5), 2)
+    draw_portal_sparks(marker, accent, ring_radius + 3, ticks, 3)
+    if warning:
+        draw_tiny_text("CORE", marker[0] - 18, marker[1] - 36, (255, 155, 130))
+
+
 def draw_spawn_exit_markers():
     for path in current_paths():
         start = path[0]
         end = path[-1]
-        start_marker = (max(18, min(MAP_WIDTH - 18, start[0])), start[1])
-        end_marker = (max(18, min(MAP_WIDTH - 18, end[0])), end[1])
-        spawn_sprite = images.get("terrain", {}).get("spawn")
-        base_sprite = images.get("terrain", {}).get("base")
-        if not draw_sprite_centered(screen, spawn_sprite, start_marker[0], start_marker[1]):
-            pygame.draw.circle(screen, (70, 185, 95), start_marker, 18)
-            pygame.draw.circle(screen, (15, 40, 25), start_marker, 11)
-            pygame.draw.polygon(screen, (235, 245, 210), [(start_marker[0] - 5, start_marker[1] - 8), (start_marker[0] + 8, start_marker[1]), (start_marker[0] - 5, start_marker[1] + 8)])
-
-        if not draw_sprite_centered(screen, base_sprite, end_marker[0], end_marker[1]):
-            pygame.draw.circle(screen, (190, 75, 75), end_marker, 20)
-            pygame.draw.circle(screen, (55, 20, 20), end_marker, 12)
-            pygame.draw.rect(screen, (235, 210, 190), (end_marker[0] - 8, end_marker[1] - 8, 16, 16), 2)
+        start_marker = (max(32, min(MAP_WIDTH - 32, start[0])), start[1])
+        end_marker = (max(32, min(MAP_WIDTH - 32, end[0])), end[1])
+        draw_signal_spawn_marker(start_marker)
+        draw_signal_core_marker(end_marker)
 
 
 def draw_path():
@@ -2394,16 +2752,6 @@ def draw_build_preview():
     pygame.draw.rect(screen, outline, rect, 2)
     preview_tower.draw_figurine(TOWER_TYPES[selected_build_type]["color"])
     pygame.draw.circle(screen, range_color, site, int(preview_tower.range), 1)
-
-
-def draw_ability_preview():
-    if selected_ability != "quarantine":
-        return
-
-    mx, my = get_game_mouse_pos()
-    if 0 <= mx < MAP_WIDTH and BUILD_GRID_TOP <= my <= HEIGHT:
-        pygame.draw.circle(screen, (150, 230, 255), (mx, my), QUARANTINE_RADIUS, 2)
-        pygame.draw.circle(screen, (80, 150, 180), (mx, my), QUARANTINE_RADIUS // 2, 1)
 
 
 def can_place_tower(pos):
@@ -2589,18 +2937,42 @@ def create_boss_enemy(path_index=0):
     hp = 950 + wave * 190 + boss_tier * 420
     speed = max(35, 58 - boss_tier * 3)
     reward = 75 + boss_tier * 25
+    boss_protocol = get_boss_protocol_for_wave(wave)
 
     if wave == 5:
         return apply_bounty_bonus(Enemy(hp, speed, reward, kind="ogre boss", boss=True, path_index=path_index))
     if wave == 10:
-        return apply_bounty_bonus(Enemy(hp * 1.25, speed * 0.9, reward + 20, kind="armored boss", shield_hits=6, boss=True, path_index=path_index))
+        return apply_bounty_bonus(
+            Enemy(
+                hp * 1.25,
+                speed * 0.9,
+                reward + 20,
+                kind="ransomware boss",
+                shield_hits=6,
+                boss=True,
+                path_index=path_index,
+                boss_protocol=boss_protocol,
+            )
+        )
     if wave == 15:
         return apply_bounty_bonus(Enemy(hp * 1.1, speed, reward + 25, kind="iron boss", shield_hits=8, boss=True, path_index=path_index))
     if wave == 20:
         return apply_bounty_bonus(Enemy(hp, speed * 0.95, reward + 35, kind="summoner boss", boss=True, death_spawns=12, path_index=path_index))
     if wave == 25:
         return apply_bounty_bonus(Enemy(hp * 1.2, speed * 1.15, reward + 45, kind="sky boss", flying=True, boss=True, path_index=path_index))
-    return apply_bounty_bonus(Enemy(hp * 1.55, speed, reward + 75, kind="final boss", shield_hits=8, boss=True, death_spawns=18, path_index=path_index))
+    return apply_bounty_bonus(
+        Enemy(
+            hp * 1.55,
+            speed,
+            reward + 75,
+            kind="final boss",
+            shield_hits=8,
+            boss=True,
+            death_spawns=18,
+            path_index=path_index,
+            boss_protocol=boss_protocol,
+        )
+    )
 
 
 def place_spawned_enemy(enemy, x=None, y=None, target_index=1):
@@ -2738,9 +3110,9 @@ def sell_tower(tower):
 def get_shop_button_rects():
     rects = []
     start_x = MAP_WIDTH + 14
-    start_y = 158
+    start_y = 126
     button_w = 120
-    button_h = 29
+    button_h = 28
     gap = 4
     for index, tower_type in enumerate(current_shop_towers()):
         col = index % 2
@@ -2751,20 +3123,7 @@ def get_shop_button_rects():
 
 
 def current_shop_towers():
-    return SHOP_TABS.get(selected_shop_tab, next(iter(SHOP_TABS.values())))
-
-
-def get_shop_tab_button_rects():
-    rects = []
-    start_x = MAP_WIDTH + 14
-    start_y = 126
-    button_w = 60
-    button_h = 24
-    gap = 4
-    for index, tab_name in enumerate(SHOP_TABS):
-        rect = pygame.Rect(start_x + index * (button_w + gap), start_y, button_w, button_h)
-        rects.append((rect, tab_name))
-    return rects
+    return SHOP_TOWER_ORDER
 
 
 def get_map_button_rects():
@@ -2918,12 +3277,11 @@ def draw_upgrade_panel():
     else:
         tower_name = f"{data['label']} Tower" if data else "Basic Tower"
     draw_text(tower_name, panel.x + 14, panel.y + 12, (255, 255, 255))
-    draw_small_text(
-        f"Level {selected_tower.level}  DMG {int(selected_tower.damage)}  RNG {int(selected_tower.range)}",
-        panel.x + 14,
-        panel.y + 38,
-        (210, 210, 190),
-    )
+    if selected_tower.tower_type == "support":
+        stat_text = f"Level {selected_tower.level}  Mana {int(selected_tower.support_mana)}/{int(selected_tower.support_max_mana)}  RNG {int(selected_tower.range)}"
+    else:
+        stat_text = f"Level {selected_tower.level}  DMG {int(selected_tower.damage)}  RNG {int(selected_tower.range)}"
+    draw_small_text(stat_text, panel.x + 14, panel.y + 38, (210, 210, 190))
     family = data.get("family", data["label"]) if data else "Basic"
     branch = selected_tower.branch_data()
     if branch:
@@ -3061,13 +3419,6 @@ def get_skill_button_rects():
     ]
 
 
-def get_ability_button_rects():
-    return [
-        (pygame.Rect(MAP_WIDTH + 14, 226, 120, 26), "emp"),
-        (pygame.Rect(MAP_WIDTH + 142, 226, 120, 26), "quarantine"),
-    ]
-
-
 def get_reward_card_rects():
     if not pending_card_choices:
         return []
@@ -3149,74 +3500,6 @@ def handle_reward_card_click(pos):
     return False
 
 
-def update_ability_cooldowns(dt):
-    for key in ability_cooldowns:
-        ability_cooldowns[key] = max(0.0, ability_cooldowns[key] - dt)
-
-
-def trigger_emp_pulse():
-    if ability_cooldowns["emp"] > 0:
-        return False
-    if not enemies:
-        return False
-
-    for enemy in enemies:
-        if enemy.shield_hits > 0:
-            enemy.shield_hits = max(0, enemy.shield_hits - 2)
-            enemy.shield_break_timer = max(enemy.shield_break_timer, 0.26)
-        enemy.slow_timer = max(enemy.slow_timer, 1.35)
-        enemy.slow_multiplier = min(enemy.slow_multiplier, 0.62)
-        if enemy.commander:
-            enemy.vulnerable_timer = max(enemy.vulnerable_timer, 2.0)
-            enemy.damage_multiplier = max(enemy.damage_multiplier, 1.2)
-            enemy.take_damage(max(40, enemy.max_hp * 0.07), "electric", None)
-        add_effect(SparkEffect(enemy.x, enemy.y, (160, 220, 255), enemy.radius + 12, 0.22, "lightning_spark"))
-
-    ability_cooldowns["emp"] = EMP_COOLDOWN
-    add_effect(BurstEffect(MAP_WIDTH // 2, HEIGHT // 2, (120, 210, 255), 220, 0.35, "frost_burst"))
-    play_sound("shield_break", 0.15)
-    return True
-
-
-def trigger_quarantine_zone(pos):
-    global selected_ability
-
-    if ability_cooldowns["quarantine"] > 0:
-        return False
-
-    x, y = pos
-    for enemy in enemies:
-        if dist((x, y), (enemy.x, enemy.y)) > QUARANTINE_RADIUS:
-            continue
-        enemy.slow_timer = max(enemy.slow_timer, 3.0)
-        enemy.slow_multiplier = min(enemy.slow_multiplier, 0.35)
-        enemy.freeze_timer = max(enemy.freeze_timer, 0.45 if enemy.boss else 1.1)
-        if enemy.commander:
-            enemy.vulnerable_timer = max(enemy.vulnerable_timer, 2.2)
-            enemy.damage_multiplier = max(enemy.damage_multiplier, 1.18)
-
-    ability_cooldowns["quarantine"] = QUARANTINE_COOLDOWN
-    selected_ability = None
-    add_effect(BurstEffect(x, y, (150, 230, 255), QUARANTINE_RADIUS, 0.45, "frost_burst"))
-    play_sound("freeze", 0.16)
-    return True
-
-
-def handle_ability_button_click(pos):
-    global selected_ability
-
-    for rect, ability_key in get_ability_button_rects():
-        if not rect.collidepoint(pos):
-            continue
-        if ability_key == "emp":
-            selected_ability = None
-            return trigger_emp_pulse()
-        if ability_cooldowns["quarantine"] <= 0:
-            selected_ability = "quarantine"
-        return True
-    return False
-
-
 def complete_current_wave():
     global money, research_points, wave, spawned_this_wave, spawn_timer, wave_active, victory
     global next_wave_bounty_bonus, next_wave_bounty_wave, pending_card_choices
@@ -3262,31 +3545,18 @@ def start_wave():
 def handle_command_click(pos):
     global endless_mode, stars, starting_money_bonus_level, tower_damage_bonus_level
     global victory, wave, wave_active, spawn_timer, spawned_this_wave
-    global selected_build_type, selected_shop_tab, selected_tower, paused, game_speed, selected_ability
+    global selected_build_type, selected_tower, paused, game_speed
     global sfx_enabled, music_enabled
 
     if get_start_wave_button_rect().collidepoint(pos):
         start_wave()
         return True
 
-    for rect, tab_name in get_shop_tab_button_rects():
-        if rect.collidepoint(pos):
-            selected_shop_tab = tab_name
-            selected_build_type = None
-            selected_tower = None
-            return True
-
     for rect, tower_type in get_shop_button_rects():
         if rect.collidepoint(pos):
             selected_build_type = tower_type
             selected_tower = None
-            selected_ability = None
             return True
-
-    if handle_ability_button_click(pos):
-        selected_build_type = None
-        selected_tower = None
-        return True
 
     if get_pause_button_rect().collidepoint(pos):
         paused = not paused
@@ -3413,31 +3683,6 @@ def draw_start_and_speed_controls():
         draw_tiny_text(label, audio_rect.x + 12, audio_rect.y + 5, (235, 240, 220))
 
 
-def draw_system_abilities():
-    labels = {
-        "emp": "EMP Pulse",
-        "quarantine": "Quarantine",
-    }
-    for rect, ability_key in get_ability_button_rects():
-        cooldown = ability_cooldowns[ability_key]
-        ready = cooldown <= 0
-        armed = selected_ability == ability_key
-        fill = (38, 58, 64) if ready else (42, 43, 43)
-        if armed:
-            fill = (36, 72, 82)
-        outline = (120, 220, 255) if ready else (95, 95, 85)
-        if armed:
-            outline = (190, 245, 255)
-        pygame.draw.rect(screen, fill, rect)
-        pygame.draw.rect(screen, outline, rect, 2)
-        label = labels[ability_key]
-        if cooldown > 0:
-            label = f"{label[:3]} {int(cooldown) + 1}s"
-        elif armed:
-            label = "Click Map"
-        draw_tiny_text(label, rect.x + 8, rect.y + 7, (235, 250, 255) if ready else (165, 165, 150))
-
-
 def draw_reward_cards():
     if not pending_card_choices:
         return
@@ -3457,14 +3702,51 @@ def draw_reward_cards():
             draw_tiny_text(line, rect.x + 12, rect.y + 70 + index * 16, (215, 225, 225))
 
 
+def draw_role_icon(icon_key, x, y, enabled=True):
+    color = ROLE_ICON_COLORS.get(icon_key, (220, 220, 210))
+    if not enabled:
+        color = blend_color(color, (85, 75, 75), 0.58)
+
+    if icon_key == "fast":
+        for offset in (0, 4, 8):
+            pygame.draw.line(screen, color, (x - 5, y - 4 + offset), (x + 6, y - 4 + offset), 2)
+    elif icon_key == "single":
+        pygame.draw.circle(screen, color, (x, y), 6, 2)
+        pygame.draw.line(screen, color, (x - 8, y), (x + 8, y), 1)
+        pygame.draw.line(screen, color, (x, y - 8), (x, y + 8), 1)
+    elif icon_key == "aoe":
+        pygame.draw.circle(screen, color, (x, y), 7, 2)
+        pygame.draw.circle(screen, color, (x, y), 3, 1)
+    elif icon_key == "slow":
+        pygame.draw.circle(screen, color, (x, y), 6, 2)
+        pygame.draw.line(screen, color, (x - 7, y - 7), (x + 7, y + 7), 1)
+        pygame.draw.line(screen, color, (x + 7, y - 7), (x - 7, y + 7), 1)
+    elif icon_key == "dot":
+        pygame.draw.polygon(screen, color, [(x, y - 8), (x + 7, y), (x + 3, y + 7), (x - 5, y + 7), (x - 7, y)])
+        pygame.draw.circle(screen, blend_color(color, (255, 255, 255), 0.25), (x + 1, y + 2), 2)
+    elif icon_key == "support":
+        pygame.draw.circle(screen, color, (x, y), 7, 1)
+        pygame.draw.line(screen, color, (x - 5, y), (x + 5, y), 2)
+        pygame.draw.line(screen, color, (x, y - 5), (x, y + 5), 2)
+    elif icon_key == "air":
+        pygame.draw.polygon(screen, color, [(x, y - 8), (x + 8, y + 6), (x, y + 2), (x - 8, y + 6)])
+    elif icon_key == "hold":
+        pygame.draw.rect(screen, color, (x - 7, y - 5, 14, 10), 2)
+        pygame.draw.line(screen, color, (x - 5, y + 6), (x - 5, y + 9), 2)
+        pygame.draw.line(screen, color, (x + 5, y + 6), (x + 5, y + 9), 2)
+    elif icon_key == "armor":
+        pygame.draw.polygon(screen, color, [(x, y - 8), (x + 7, y - 4), (x + 5, y + 5), (x, y + 9), (x - 5, y + 5), (x - 7, y - 4)], 2)
+    else:
+        pygame.draw.circle(screen, color, (x, y), 5)
+
+
+def draw_tower_role_icons(tower_type, x, y, enabled=True):
+    for index, icon_key in enumerate(TOWER_ROLE_ICONS.get(tower_type, ())[:3]):
+        draw_role_icon(icon_key, x + index * 17, y, enabled)
+
+
 def draw_tower_shop():
     draw_small_text("Build Towers", MAP_WIDTH + 14, 108, (235, 235, 220))
-
-    for rect, tab_name in get_shop_tab_button_rects():
-        active = selected_shop_tab == tab_name
-        pygame.draw.rect(screen, (42, 55, 45) if active else (32, 36, 33), rect)
-        pygame.draw.rect(screen, (105, 200, 120) if active else (90, 95, 82), rect, 2)
-        draw_tiny_text(tab_name, rect.x + 5, rect.y + 7, (235, 245, 225) if active else (185, 185, 168))
 
     for rect, tower_type in get_shop_button_rects():
         data = TOWER_TYPES[tower_type]
@@ -3483,7 +3765,8 @@ def draw_tower_shop():
         else:
             text_x = rect.x + 7
         draw_tiny_text(data["label"], text_x, rect.y + 4, (245, 245, 235) if affordable else (165, 140, 140))
-        draw_tiny_text(f"${SHOP_COSTS[tower_type]}", rect.right - 38, rect.y + 16, (225, 225, 205) if affordable else (150, 130, 130))
+        draw_tiny_text(f"${SHOP_COSTS[tower_type]}", rect.right - 38, rect.y + 15, (225, 225, 205) if affordable else (150, 130, 130))
+        draw_tower_role_icons(tower_type, text_x, rect.y + 19, affordable)
 
 
 def draw_wave_timeline():
@@ -3503,6 +3786,8 @@ def draw_wave_timeline():
         label = get_wave_label(preview_wave)
         if bosses:
             label += f" Bx{bosses}"
+        if get_boss_protocol_for_wave(preview_wave) == "ransomware":
+            label += " Lock"
         if commanders:
             label += " CMD"
         prefix = "Now" if index == 0 else f"W{preview_wave}"
@@ -3565,6 +3850,8 @@ def draw_boss_health_bar():
         tags.append("Flying")
     if primary.death_spawns:
         tags.append("Summoner")
+    if primary.boss_protocol == "ransomware":
+        tags.append("Ransomware")
     if tags:
         draw_tiny_text(" / ".join(tags), bar.right - 110, bar.y - 18, (235, 220, 190))
     draw_tiny_text(f"{int(total_hp)}/{int(total_max)}", bar.x + 136, bar.y + 5, (255, 245, 230))
@@ -3577,7 +3864,7 @@ def draw_map_selector():
         draw_tiny_text("Locked after building or starting", MAP_WIDTH + 58, 491, (155, 155, 140))
 
     seed_text = str(active_map.get("seed", "fallback"))
-    draw_tiny_text("Random road", MAP_WIDTH + 14, 516, (235, 245, 225))
+    draw_tiny_text(active_map.get("name", "Random Road"), MAP_WIDTH + 14, 516, (235, 245, 225))
     draw_tiny_text(f"Seed: {seed_text}", MAP_WIDTH + 14, 536, (190, 200, 180))
 
     rect = get_new_map_button_rect()
@@ -3591,37 +3878,15 @@ def draw_map_selector():
 
 def draw_sidebar_tooltips():
     mouse_pos = get_game_mouse_pos()
-    synergy_text = {
-        "archer": "Synergy: +15% vs Sniper-marked enemies",
-        "sniper": "Synergy: marks enemies for Archer",
-        "machine_gun": "Synergy: +15% vs Frost-slowed enemies",
-        "cannon": "Synergy: shatters Frozen or Barracks-held enemies",
-        "frost": "Synergy: boosts Cannon, Machine Gun, Tesla",
-        "tesla": "Synergy: extra chain from Frost slow/freeze",
-        "poison": "Synergy: softens tanks and bosses over time",
-        "barracks": "Synergy: holds enemies for Cannon",
-        "flame": "Synergy: burns grouped ground enemies",
-        "mortar": "Synergy: huge splash, cannot hit close targets",
-        "support": "Synergy: aura buffs nearby towers",
-        "gold": "Synergy: earns money while waves are active",
-    }
-
-    for rect, tab_name in get_shop_tab_button_rects():
-        if rect.collidepoint(mouse_pos):
-            lines = [f"{tab_name} Towers"]
-            lines.extend(TOWER_TYPES[tower_type]["label"] for tower_type in SHOP_TABS[tab_name])
-            draw_tooltip(lines, 232)
-            return
 
     for rect, tower_type in get_shop_button_rects():
         if rect.collidepoint(mouse_pos):
             data = TOWER_TYPES[tower_type]
+            summary = TOWER_TOOLTIP_SUMMARY.get(tower_type, (data["role"], f"Best: {data['good_vs']}", f"Weak: {data['weakness']}"))
             lines = [
                 f"{data['label']} - ${SHOP_COSTS[tower_type]}",
-                data["role"],
-                f"Good: {data['good_vs']}",
-                f"Weak: {data['weakness']}",
-                synergy_text.get(tower_type, data["role"]),
+                summary[0],
+                f"{summary[1]}   {summary[2]}",
             ]
             draw_tooltip(lines, 232)
             return
@@ -3674,7 +3939,6 @@ def draw_command_ui():
     draw_sidebar_background()
     draw_start_and_speed_controls()
     draw_tower_shop()
-    draw_system_abilities()
     if selected_tower is None:
         draw_wave_timeline()
         draw_map_selector()
@@ -3707,10 +3971,9 @@ def reset_game():
     global money, lives, score, research_points, wave, game_over, victory
     global enemies, towers, projectiles, effects
     global spawn_timer, spawned_this_wave, wave_active, selected_tower
-    global endless_mode, run_stars_awarded, selected_build_type, selected_shop_tab, paused, game_speed, spawn_path_index
+    global endless_mode, run_stars_awarded, selected_build_type, paused, game_speed, spawn_path_index
     global screen_shake_timer, screen_shake_strength, boss_warning_timer
     global pending_card_choices, run_damage_bonus, run_range_bonus, next_wave_bounty_bonus, next_wave_bounty_wave
-    global selected_ability, ability_cooldowns
 
     money = STARTING_MONEY + starting_money_bonus_level * 25
     lives = STARTING_LIVES
@@ -3730,7 +3993,6 @@ def reset_game():
     wave_active = False
     selected_tower = None
     selected_build_type = None
-    selected_shop_tab = next(iter(SHOP_TABS))
     paused = False
     game_speed = 1.0
     generate_new_active_map()
@@ -3742,15 +4004,13 @@ def reset_game():
     run_range_bonus = 0.0
     next_wave_bounty_bonus = 0
     next_wave_bounty_wave = None
-    selected_ability = None
-    ability_cooldowns = {"emp": 0.0, "quarantine": 0.0}
     endless_mode = False
     run_stars_awarded = False
     particle_manager.clear()
 
 
 async def run_async(argv=None, exit_on_quit=False):
-    global window_width, window_height, selected_tower, selected_build_type, selected_ability
+    global window_width, window_height, selected_tower, selected_build_type
     global sfx_enabled, music_enabled, screen_shake_timer, screen_shake_strength, boss_warning_timer
     global money, research_points, wave, spawned_this_wave, spawn_timer, wave_active
     global victory, game_over, lives, score
@@ -3809,7 +4069,6 @@ async def run_async(argv=None, exit_on_quit=False):
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                 selected_tower = None
                 selected_build_type = None
-                selected_ability = None
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if mouse_in_game_area(event.pos):
@@ -3817,9 +4076,6 @@ async def run_async(argv=None, exit_on_quit=False):
                     if handle_reward_card_click((mx, my)):
                         continue
                     if pending_card_choices:
-                        continue
-                    if selected_ability == "quarantine" and mx < MAP_WIDTH:
-                        trigger_quarantine_zone((mx, my))
                         continue
                     if handle_command_click((mx, my)):
                         continue
@@ -3847,7 +4103,6 @@ async def run_async(argv=None, exit_on_quit=False):
                             selected_tower = None
 
         if not game_over and not victory and not paused:
-            update_ability_cooldowns(dt)
             enemies_per_wave = get_enemies_per_wave()
             spawn_interval = get_spawn_interval()
 
@@ -3912,7 +4167,6 @@ async def run_async(argv=None, exit_on_quit=False):
         draw_terrain()
         draw_path()
         draw_build_preview()
-        draw_ability_preview()
 
         for tower in towers:
             tower.draw()

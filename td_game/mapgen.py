@@ -12,21 +12,22 @@ from .config import (
 from .data import MAPS
 
 
-MIN_PATH_LENGTH = 1450
-MAX_PATH_LENGTH = 1850
-MIN_VERTICAL_STEP = 115
-MAX_VERTICAL_STEP = 235
+MIN_PATH_LENGTH = 1250
+MAX_PATH_LENGTH = 2400
+MIN_VERTICAL_STEP = 105
+MAX_VERTICAL_STEP = 260
 MIN_TURNS = 4
-MAX_TURNS = 5
+MAX_TURNS = 7
 MIN_PARALLEL_LANE_SPACING = PATH_WIDTH + BUILD_TILE_SIZE + 18
-MIN_BUILDABLE_SITES = 78
+MIN_BUILDABLE_SITES = 68
 THEMES = ("forest", "swamp", "snow", "lava")
+PATH_STYLES = ("Switchback", "Turnaround")
 
 
 def path_length(path):
     total = 0
     for start, end in zip(path, path[1:]):
-        total += abs(end[0] - start[0]) + abs(end[1] - start[1])
+        total += math.hypot(end[0] - start[0], end[1] - start[1])
     return total
 
 
@@ -35,47 +36,127 @@ def generate_random_map(seed=None):
         seed = random.SystemRandom().randint(1000, 999999)
 
     rng = random.Random(seed)
-    for _ in range(160):
-        path = _generate_candidate_path(rng)
-        if path is None:
-            continue
+    preferred_style = rng.choice(PATH_STYLES)
+    style_order = [preferred_style] + [style for style in PATH_STYLES if style != preferred_style]
+    for style in style_order:
+        for _ in range(140):
+            candidate = _generate_candidate_paths(rng, style)
+            if candidate is None:
+                continue
 
-        length = path_length(path)
-        if (
-            MIN_PATH_LENGTH <= length <= MAX_PATH_LENGTH
-            and _path_in_bounds(path)
-            and path_has_open_build_corridors(path)
-            and count_buildable_sites(path) >= MIN_BUILDABLE_SITES
-        ):
-            return {
-                "name": "Random Road",
-                "theme": rng.choice(THEMES),
-                "seed": seed,
-                "paths": [path],
-            }
+            paths, style_name = candidate
+            if (
+                paths_are_orthogonal(paths)
+                and paths_have_overlap(paths)
+                and _path_lengths_in_range(paths)
+                and _paths_in_bounds(paths)
+                and paths_have_open_build_corridors(paths)
+                and count_buildable_sites_for_paths(paths) >= MIN_BUILDABLE_SITES
+            ):
+                return {
+                    "name": f"Random {style_name}",
+                    "theme": rng.choice(THEMES),
+                    "seed": seed,
+                    "paths": paths,
+                }
 
-    fallback = dict(MAPS[0])
-    fallback["name"] = "Random Fallback"
-    fallback["seed"] = seed
-    return fallback
+    return _fallback_overlap_map(seed, rng)
 
 
-def _generate_candidate_path(rng):
-    vertical_count = rng.randint(MIN_TURNS, MAX_TURNS)
-    x_turns = _x_turns(rng, vertical_count)
-    if x_turns is None:
+def _generate_candidate_paths(rng, style):
+    if style == "Turnaround":
+        path = _generate_turnaround_path(rng)
+        return ([path], style) if path is not None else None
+
+    path = _generate_switchback_path(rng)
+    return ([path], style) if path is not None else None
+
+
+def _generate_switchback_path(rng):
+    return _generate_overlap_loop_path(rng, first_lane="bottom")
+
+
+def _generate_turnaround_path(rng):
+    return _generate_overlap_loop_path(rng, first_lane="top")
+
+
+def _generate_overlap_loop_path(rng, first_lane):
+    min_y = _snap_y(BUILD_GRID_TOP + PATH_WIDTH + 30)
+    max_y = _snap_y(HEIGHT - PATH_WIDTH - 20)
+    min_gap = _snap_y(MIN_PARALLEL_LANE_SPACING)
+    loop_height = rng.randrange(min_gap * 2, max_y - min_y + 1, BUILD_GRID_STEP)
+    top_y = rng.randrange(min_y, max_y - loop_height + 1, BUILD_GRID_STEP)
+    bottom_y = top_y + loop_height
+
+    middle_candidates = [
+        y
+        for y in range(top_y + min_gap, bottom_y - min_gap + 1, BUILD_GRID_STEP)
+        if top_y < y < bottom_y
+    ]
+    if len(middle_candidates) < 2:
         return None
 
-    y_values = _y_values(rng, vertical_count + 1)
+    start_y = rng.choice(middle_candidates)
+    inner_y = rng.choice(middle_candidates)
+    exit_candidates = [y for y in middle_candidates if abs(y - inner_y) >= BUILD_GRID_STEP * 2]
+    if not exit_candidates:
+        return None
+    exit_y = rng.choice(exit_candidates)
 
-    path = [(0, y_values[0])]
-    current_y = y_values[0]
-    for x, next_y in zip(x_turns, y_values[1:]):
-        path.append((x, current_y))
-        path.append((x, next_y))
-        current_y = next_y
-    path.append((MAP_WIDTH, current_y))
-    return path
+    left_x = _snap_x(rng.randint(120, 205))
+    inner_left_x = _snap_x(rng.randint(285, 380))
+    inner_right_x = _snap_x(rng.randint(525, 630))
+    right_x = _snap_x(rng.randint(730, 810))
+    if not (
+        inner_left_x - left_x >= MIN_PARALLEL_LANE_SPACING
+        and inner_right_x - inner_left_x >= MIN_PARALLEL_LANE_SPACING
+        and right_x - inner_right_x >= MIN_PARALLEL_LANE_SPACING
+    ):
+        return None
+
+    if first_lane == "bottom":
+        outer_lane = bottom_y
+        return_lane = top_y
+    else:
+        outer_lane = top_y
+        return_lane = bottom_y
+
+    return _dedupe_path(
+        [
+            (0, start_y),
+            (left_x, start_y),
+            (left_x, outer_lane),
+            (right_x, outer_lane),
+            (right_x, return_lane),
+            (inner_left_x, return_lane),
+            (inner_left_x, inner_y),
+            (inner_right_x, inner_y),
+            (inner_right_x, exit_y),
+            (MAP_WIDTH, exit_y),
+        ]
+    )
+
+
+def _fallback_overlap_map(seed, rng):
+    return {
+        "name": "Random Fallback Overlap",
+        "theme": rng.choice(THEMES),
+        "seed": seed,
+        "paths": [
+            [
+                (0, 324),
+                (135, 324),
+                (135, 162),
+                (756, 162),
+                (756, 486),
+                (378, 486),
+                (378, 351),
+                (567, 351),
+                (567, 297),
+                (MAP_WIDTH, 297),
+            ]
+        ],
+    }
 
 
 def _x_turns(rng, count):
@@ -125,8 +206,62 @@ def _y_values(rng, count):
     return values
 
 
+def _dedupe_path(path):
+    result = []
+    for point in path:
+        if not result or result[-1] != point:
+            result.append(point)
+    return result
+
+
+def _snap_x(value):
+    return int(round(value / BUILD_GRID_STEP) * BUILD_GRID_STEP)
+
+
 def _snap_y(value):
     return int(round(value / BUILD_GRID_STEP) * BUILD_GRID_STEP)
+
+
+def _normalize_paths(paths_or_path):
+    if not paths_or_path:
+        return []
+    first = paths_or_path[0]
+    if isinstance(first, tuple):
+        return [paths_or_path]
+    return paths_or_path
+
+
+def _path_lengths_in_range(paths):
+    return all(MIN_PATH_LENGTH <= path_length(path) <= MAX_PATH_LENGTH for path in paths)
+
+
+def paths_are_orthogonal(paths):
+    return all(
+        start[0] == end[0] or start[1] == end[1]
+        for path in paths
+        for start, end in zip(path, path[1:])
+    )
+
+
+def paths_have_overlap(paths):
+    segments = []
+    for path_index, path in enumerate(paths):
+        for segment_index, (start, end) in enumerate(zip(path, path[1:])):
+            segments.append((path_index, segment_index, start, end))
+
+    for index, first in enumerate(segments):
+        for second in segments[index + 1:]:
+            if _segments_cross_interior(first[2], first[3], second[2], second[3]):
+                return True
+    return False
+
+
+def path_has_overlap(path):
+    return paths_have_overlap(_normalize_paths(path))
+
+
+def _paths_in_bounds(paths):
+    return all(_path_in_bounds(path) for path in paths)
 
 
 def _path_in_bounds(path):
@@ -135,18 +270,19 @@ def _path_in_bounds(path):
     return all(0 <= x <= MAP_WIDTH and min_y <= y <= max_y for x, y in path)
 
 
-def path_has_open_build_corridors(path):
+def paths_have_open_build_corridors(paths):
     """Reject tight snake lanes that leave no tower-sized space between roads."""
 
     vertical_segments = []
     horizontal_segments = []
-    for start, end in zip(path, path[1:]):
-        if start[0] == end[0]:
-            y1, y2 = sorted((start[1], end[1]))
-            vertical_segments.append((start[0], y1, y2))
-        elif start[1] == end[1]:
-            x1, x2 = sorted((start[0], end[0]))
-            horizontal_segments.append((start[1], x1, x2))
+    for path in paths:
+        for start, end in zip(path, path[1:]):
+            if start[0] == end[0]:
+                y1, y2 = sorted((start[1], end[1]))
+                vertical_segments.append((start[0], y1, y2))
+            elif start[1] == end[1]:
+                x1, x2 = sorted((start[0], end[0]))
+                horizontal_segments.append((start[1], x1, x2))
 
     for index, first in enumerate(vertical_segments):
         x1, y1_min, y1_max = first
@@ -165,17 +301,25 @@ def path_has_open_build_corridors(path):
     return True
 
 
-def count_buildable_sites(path):
+def path_has_open_build_corridors(path):
+    return paths_have_open_build_corridors(_normalize_paths(path))
+
+
+def count_buildable_sites_for_paths(paths):
     count = 0
     half = BUILD_TILE_SIZE // 2
     blocked_distance = PATH_WIDTH / 2 + half
 
     for x in range(half, MAP_WIDTH, BUILD_TILE_SIZE):
         for y in range(BUILD_GRID_TOP + half, HEIGHT, BUILD_TILE_SIZE):
-            if _point_has_path_clearance((x, y), path, blocked_distance):
+            if all(_point_has_path_clearance((x, y), path, blocked_distance) for path in paths):
                 count += 1
 
     return count
+
+
+def count_buildable_sites(path):
+    return count_buildable_sites_for_paths(_normalize_paths(path))
 
 
 def _point_has_path_clearance(point, path, blocked_distance):
@@ -200,6 +344,22 @@ def _distance_point_to_segment(point, start, end):
     nearest_x = x1 + t * dx
     nearest_y = y1 + t * dy
     return math.hypot(px - nearest_x, py - nearest_y)
+
+
+def _segments_cross_interior(first_start, first_end, second_start, second_end):
+    if first_start[1] == first_end[1] and second_start[0] == second_end[0]:
+        return _horizontal_vertical_crosses(first_start, first_end, second_start, second_end)
+    if first_start[0] == first_end[0] and second_start[1] == second_end[1]:
+        return _horizontal_vertical_crosses(second_start, second_end, first_start, first_end)
+    return False
+
+
+def _horizontal_vertical_crosses(horizontal_start, horizontal_end, vertical_start, vertical_end):
+    y = horizontal_start[1]
+    x = vertical_start[0]
+    h_min, h_max = sorted((horizontal_start[0], horizontal_end[0]))
+    v_min, v_max = sorted((vertical_start[1], vertical_end[1]))
+    return h_min < x < h_max and v_min < y < v_max
 
 
 def _range_overlap(a_min, a_max, b_min, b_max):

@@ -10,7 +10,7 @@ WAVE_MODIFIERS = {
     "haste": {
         "label": "Surge",
         "description": "Malware packets move faster.",
-        "recommendation": "Surge: add Frost, Barracks, or Quarantine control.",
+        "recommendation": "Surge: add Frost or Garrison control.",
         "color": (235, 95, 190),
         "effects": {"speed_multiplier": 1.22},
     },
@@ -24,14 +24,14 @@ WAVE_MODIFIERS = {
     "armored": {
         "label": "Encrypted",
         "description": "Packets gain extra shield layers and resist damage.",
-        "recommendation": "Encrypted: Sniper pierce, Cannon breach, or EMP.",
+        "recommendation": "Encrypted: Sniper pierce or Artillery breach.",
         "color": (185, 185, 205),
         "effects": {"shield_hits": 1, "damage_multiplier": 0.8},
     },
     "split": {
         "label": "Fragmenting",
         "description": "Packets split into smaller fragments when deleted.",
-        "recommendation": "Fragmenting: add splash, chain, or Machine Gun cleanup.",
+        "recommendation": "Fragmenting: add splash, chain, or Gunner cleanup.",
         "color": (230, 135, 80),
         "effects": {"death_spawns": 1},
     },

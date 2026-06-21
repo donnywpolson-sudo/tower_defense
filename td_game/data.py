@@ -62,24 +62,28 @@ ROOT_TOWER_IDS = (
     "cannon",
     "frost",
     "tesla",
+    "poison",
     "barracks",
     "support",
+)
+
+SHOP_TOWER_ORDER = (
+    "machine_gun",
+    "cannon",
+    "frost",
+    "poison",
+    "support",
+    "sniper",
+    "tesla",
+    "barracks",
 )
 
 BRANCH_UNLOCK_LEVEL = 3
 
 LEGACY_TOWER_ALIASES = {
-    "poison": ("archer", "trapline"),
     "flame": ("cannon", "terraformer"),
     "mortar": ("cannon", "artillery"),
     "gold": ("support", "research_lab"),
-}
-
-SHOP_TABS = {
-    "Damage": ("archer", "sniper", "machine_gun", "cannon"),
-    "Control": ("frost", "tesla"),
-    "Military": ("barracks",),
-    "Utility": ("support",),
 }
 
 FAMILY_INFO = {
@@ -89,8 +93,9 @@ FAMILY_INFO = {
     "cannon": ("Siege Family", "Splash, armor break, terrain denial"),
     "frost": ("Cryo Family", "Slow, freeze, shatter, time control"),
     "tesla": ("Storm Family", "Chain lightning, energy, anti-air"),
+    "poison": ("Venom Family", "Poison, burn, and spreading debuffs"),
     "barracks": ("Garrison Family", "Guards, engineers, mercenaries"),
-    "support": ("Command Family", "Aura, research, strategy control"),
+    "support": ("Channeler Family", "Mana casts, buffs, and priority debuffs"),
 }
 
 BRANCH_DEFINITIONS = {
@@ -376,6 +381,53 @@ BRANCH_DEFINITIONS = {
             },
         },
     },
+    "poison": {
+        "venom_cask": {
+            "name": "Venom Cask",
+            "short": "VC",
+            "role": "Long poison for tanks and bosses",
+            "effect_preview": "Poisons linger and suppress regeneration.",
+            "mechanics": ("poison", "anti_regen", "boss_pressure"),
+            "tags": ("damage", "poison", "boss"),
+            "color": (120, 225, 95),
+            "tiers": {3: "Venom Cask", 4: "Toxin Still", 5: "Manticore Flask"},
+            "descriptions": {
+                3: "Poison lasts longer on high-health enemies",
+                4: "Toxins hit regenerating enemies harder",
+                5: "Bosses melt under stacked venom",
+            },
+        },
+        "wildfire": {
+            "name": "Wildfire",
+            "short": "WF",
+            "role": "Burning clouds for clustered lanes",
+            "effect_preview": "Adds burn and small hazard bursts.",
+            "mechanics": ("burn", "hazard", "splash"),
+            "tags": ("damage", "hazard", "splash"),
+            "color": (245, 135, 65),
+            "tiers": {3: "Wildfire", 4: "Caustic Flame", 5: "Scorch Bloom"},
+            "descriptions": {
+                3: "Toxins ignite into short burn effects",
+                4: "Burning clouds punish grouped enemies",
+                5: "Scorch blooms widen the kill zone",
+            },
+        },
+        "plague_mist": {
+            "name": "Plague Mist",
+            "short": "PM",
+            "role": "Spreading debuffs and slows",
+            "effect_preview": "Spreads poison and snares nearby enemies.",
+            "mechanics": ("poison", "slow", "trap"),
+            "tags": ("control", "poison", "slow"),
+            "color": (150, 215, 95),
+            "tiers": {3: "Plague Mist", 4: "Spore Net", 5: "Contagion Engine"},
+            "descriptions": {
+                3: "Poison clouds slow infected targets",
+                4: "Spore nets spread control to nearby enemies",
+                5: "Contagion keeps waves weakened longer",
+            },
+        },
+    },
     "barracks": {
         "champions": {
             "name": "Champions",
@@ -385,7 +437,7 @@ BRANCH_DEFINITIONS = {
             "mechanics": ("hold", "melee", "elite_duel"),
             "tags": ("control", "hold", "melee"),
             "color": (220, 170, 95),
-            "tiers": {3: "Champion Guard", 4: "Fortress Duelists", 5: "Elite Shield Wall"},
+            "tiers": {3: "Champion Guard", 4: "Fortress Duelists", 5: "Elite Garrison"},
             "descriptions": {
                 3: "Guards hold ground enemies longer",
                 4: "Duelists damage elites and bosses",
@@ -583,16 +635,16 @@ TOWER_TYPES = {
         "paragon": "Rail Sniper",
     },
     "machine_gun": {
-        "label": "Machine Gun",
-        "short": "MG",
-        "role": "Very fast, low damage",
+        "label": "Gunner",
+        "short": "GUN",
+        "role": "Fast single-target DPS",
         "good_vs": "Swarms and low-health enemies",
-        "weakness": "Struggles against heavy armor",
+        "weakness": "Heavy armor and shields",
         "color": (95, 115, 125),
         "range_color": (145, 165, 175),
         "projectile_color": (255, 225, 100),
         "tiers": {
-            2: "Gatling Tower",
+            2: "Gunner Nest",
             3: "Twin Barrel",
             4: "Minigun Tower",
             5: "Bullet Storm",
@@ -606,19 +658,19 @@ TOWER_TYPES = {
         "paragon": "Vulcan Tower",
     },
     "cannon": {
-        "label": "Cannon",
-        "short": "C",
-        "role": "Slow splash damage",
+        "label": "Artillery",
+        "short": "ART",
+        "role": "Slow massive AoE",
         "good_vs": "Grouped enemies and tanks",
-        "weakness": "Slow fire rate and no anti-air",
+        "weakness": "Fast leaks and flying enemies",
         "color": (150, 105, 70),
         "range_color": (200, 150, 95),
         "projectile_color": (80, 70, 60),
         "tiers": {
-            2: "Cannon Tower",
-            3: "Heavy Cannon",
-            4: "Siege Cannon",
-            5: "Earthshaker Cannon",
+            2: "Artillery Tower",
+            3: "Heavy Battery",
+            4: "Siege Platform",
+            5: "Earthshaker",
         },
         "descriptions": {
             2: "Explosive shots hit groups",
@@ -675,10 +727,10 @@ TOWER_TYPES = {
         "paragon": "Storm Paragon",
     },
     "poison": {
-        "label": "Poison",
-        "short": "P",
-        "role": "Damage over time",
-        "good_vs": "Tanks, bosses, and long fights",
+        "label": "Venom",
+        "short": "VEN",
+        "role": "Burn and poison DoT",
+        "good_vs": "Tanks, bosses, and regeneration",
         "weakness": "Fast swarms can outrun the damage",
         "color": (105, 190, 85),
         "range_color": (150, 235, 125),
@@ -698,9 +750,9 @@ TOWER_TYPES = {
         "paragon": "Venom Core",
     },
     "barracks": {
-        "label": "Barracks",
-        "short": "B",
-        "role": "Guards slow enemies near path",
+        "label": "Garrison",
+        "short": "GAR",
+        "role": "Holds ground enemies",
         "good_vs": "Ground lanes and slowing pushes",
         "weakness": "Cannot attack flying enemies",
         "color": (185, 145, 85),
@@ -710,7 +762,7 @@ TOWER_TYPES = {
             2: "Guard Post",
             3: "Veteran Guards",
             4: "Shield Wall",
-            5: "Champion Barracks",
+            5: "Champion Garrison",
         },
         "descriptions": {
             2: "Guards slow nearby ground enemies",
@@ -767,27 +819,27 @@ TOWER_TYPES = {
         "paragon": "Meteor Battery",
     },
     "support": {
-        "label": "Support",
-        "short": "SUP",
-        "role": "Buffs nearby towers",
+        "label": "Channeler",
+        "short": "CHN",
+        "role": "Casts buffs and debuffs",
         "good_vs": "Dense tower clusters",
         "weakness": "Does not deal direct damage",
         "color": (200, 185, 105),
         "range_color": (245, 225, 145),
         "projectile_color": (245, 225, 145),
         "tiers": {
-            2: "Banner Tower",
-            3: "War Drum",
-            4: "Command Post",
-            5: "Battle Standard",
+            2: "Channeler Tower",
+            3: "Mana Relay",
+            4: "Command Focus",
+            5: "Battle Conduit",
         },
         "descriptions": {
-            2: "Nearby towers gain damage",
-            3: "Adds fire-rate aura",
-            4: "Adds range aura",
-            5: "Stronger combined aura",
+            2: "Builds mana and casts tower buffs",
+            3: "Casts faster and marks priority enemies",
+            4: "Buffs last longer",
+            5: "Stronger targeted support casts",
         },
-        "paragon": "High Command",
+        "paragon": "High Conduit",
     },
     "gold": {
         "label": "Gold",
@@ -889,7 +941,7 @@ MECHANIC_KEYSTONES = (
 TAG_SYNERGIES = {
     "boss": "Pairs with marks, armor break, and long lanes",
     "mark": "Pairs with Archer, Sniper, and Signal targeting",
-    "trap": "Pairs with Cannon splash and Barracks holds",
+    "trap": "Pairs with Artillery splash and Garrison holds",
     "poison": "Pairs with slows that keep enemies in the cloud",
     "pet": "Pairs with rapid marks and wounded targets",
     "pierce": "Pairs with shield and armored waves",
@@ -899,13 +951,13 @@ TAG_SYNERGIES = {
     "mortar": "Pairs with grouped lanes and long sight lines",
     "armor": "Pairs with Sniper or Demolition exposure",
     "hazard": "Pairs with slows, pulls, and repeated path crossings",
-    "freeze": "Pairs with Shatter, Cannon, and Tesla chains",
+    "freeze": "Pairs with Shatter, Artillery, and Tesla chains",
     "chain": "Pairs with Frost slow and clustered waves",
     "anti_air": "Pairs with flying-heavy waves",
     "energy": "Pairs with rapid-fire towers",
     "magnet": "Pairs with splash and hazard paths",
-    "melee": "Pairs with Cannon, Frost, and support auras",
-    "mine": "Pairs with Barracks holds and slow lanes",
+    "melee": "Pairs with Artillery, Frost, and Channeler buffs",
+    "mine": "Pairs with Garrison holds and slow lanes",
     "economy": "Pairs with safe early defenses and long waves",
     "aura": "Pairs with dense tower clusters",
     "research": "Pairs with expensive late mastery upgrades",
@@ -1011,10 +1063,13 @@ def _apply_family_metadata():
 
 def validate_tower_family_data():
     errors = []
-    shop_roots = tuple(tower_type for tab in SHOP_TABS.values() for tower_type in tab)
+    shop_roots = tuple(SHOP_TOWER_ORDER)
 
-    if tuple(shop_roots) != ROOT_TOWER_IDS:
-        errors.append(f"SHOP_TABS must expose root towers in ROOT_TOWER_IDS order: {shop_roots!r}")
+    for tower_type in shop_roots:
+        if tower_type not in ROOT_TOWER_IDS:
+            errors.append(f"Shop tower {tower_type} must be a root tower")
+        if tower_type not in SHOP_COSTS:
+            errors.append(f"Shop tower {tower_type} missing shop cost")
 
     for legacy_id in LEGACY_TOWER_ALIASES:
         if legacy_id in shop_roots:

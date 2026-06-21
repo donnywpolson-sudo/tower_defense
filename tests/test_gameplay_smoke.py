@@ -16,8 +16,6 @@ class GameplaySmokeTests(unittest.TestCase):
         app.selected_build_type = None
         app.selected_tower = None
         app.pending_card_choices = []
-        app.selected_ability = None
-        app.ability_cooldowns = {"emp": 0.0, "quarantine": 0.0}
         app.active_map = mapgen.generate_random_map(12345)
         app.wave = 1
         app.money = config.STARTING_MONEY
@@ -37,7 +35,7 @@ class GameplaySmokeTests(unittest.TestCase):
         self.assertTrue(all(enemy.is_split_child for enemy in app.enemies))
 
     def test_tower_placement_rejects_path_and_accepts_empty_grid_square(self):
-        app.selected_build_type = "archer"
+        app.selected_build_type = data.SHOP_TOWER_ORDER[0]
         app.money = 999
 
         self.assertFalse(app.can_place_tower(self._point_on_path()))
@@ -62,7 +60,6 @@ class GameplaySmokeTests(unittest.TestCase):
         always_visible.extend(rect for rect, _ in app.get_speed_button_rects())
         always_visible.extend(rect for rect, _ in app.get_shop_button_rects())
         always_visible.extend(rect for rect, _ in app.get_audio_button_rects())
-        always_visible.extend(rect for rect, _ in app.get_ability_button_rects())
 
         no_tower_selected = always_visible + [app.get_new_map_button_rect()]
         tower_selected = always_visible + [app.get_upgrade_panel_rect()]
@@ -74,6 +71,23 @@ class GameplaySmokeTests(unittest.TestCase):
         self._assert_no_rect_overlap(tower_selected)
         self._assert_no_rect_overlap(branch_panel_controls)
         self.assertLessEqual(max(rect.bottom for rect, _ in app.get_audio_button_rects()), 282)
+
+    def test_packet_trails_are_bounded(self):
+        enemy = app.Enemy(100, 40, 1)
+        for _ in range(app.PACKET_TRAIL_LIMIT + 5):
+            enemy.trail_sample_timer = 0
+            enemy.update_packet_trail(0.01)
+
+        self.assertLessEqual(len(enemy.trail_points), app.PACKET_TRAIL_LIMIT)
+
+    def test_scan_status_adds_focus_combo_damage(self):
+        enemy = app.Enemy(100, 40, 1)
+        enemy.marked_timer = 1.0
+
+        damage, labels = app.apply_synergy_damage("machine_gun", enemy, 100, "physical")
+
+        self.assertAlmostEqual(damage, 112)
+        self.assertIn("SCAN", labels)
 
     def _find_valid_build_position(self):
         for x in range(config.BUILD_TILE_SIZE // 2, config.MAP_WIDTH, config.BUILD_GRID_STEP):

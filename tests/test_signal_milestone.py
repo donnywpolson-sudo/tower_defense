@@ -15,6 +15,7 @@ class SignalMilestoneTests(unittest.TestCase):
         app.effects.clear()
         app.active_map = mapgen.generate_random_map(12345)
         app.wave = 1
+        app.wave_active = False
         app.money = config.STARTING_MONEY
         app.lives = config.STARTING_LIVES
         app.research_points = 0
@@ -23,8 +24,6 @@ class SignalMilestoneTests(unittest.TestCase):
         app.run_range_bonus = 0.0
         app.next_wave_bounty_bonus = 0
         app.next_wave_bounty_wave = None
-        app.selected_ability = None
-        app.ability_cooldowns = {"emp": 0.0, "quarantine": 0.0}
 
     def test_wave_modifier_metadata_and_commander_schedule(self):
         self.assertEqual(waves.get_wave_modifier(19), "split")
@@ -73,24 +72,50 @@ class SignalMilestoneTests(unittest.TestCase):
         self.assertEqual(app.next_wave_bounty_bonus, 2)
         self.assertEqual(app.next_wave_bounty_wave, 7)
 
-    def test_manual_abilities_apply_emp_and_quarantine_effects(self):
-        shielded = app.Enemy(100, 40, 1, kind="shield", shield_hits=3)
-        commander = app.Enemy(200, 40, 10, kind="commander", commander=True)
-        commander.x = shielded.x + 10
-        commander.y = shielded.y
-        app.enemies.extend([shielded, commander])
+    def test_channeler_spends_mana_on_buffs_and_enemy_debuffs(self):
+        support = app.Tower(100, 100, "support", app.SHOP_COSTS["support"])
+        gunner = app.Tower(140, 100, "machine_gun", app.SHOP_COSTS["machine_gun"])
+        enemy = app.Enemy(155, 95, 1)
+        enemy.x = 155
+        enemy.y = 95
+        app.towers.extend([support, gunner])
+        app.enemies.append(enemy)
+        app.wave_active = True
 
-        self.assertTrue(app.trigger_emp_pulse())
-        self.assertEqual(shielded.shield_hits, 1)
-        self.assertGreater(shielded.slow_timer, 0)
-        self.assertGreater(app.ability_cooldowns["emp"], 0)
-        self.assertLess(commander.hp, commander.max_hp)
+        support.support_mana = support.support_max_mana
+        support.update_support(0.1)
 
-        app.ability_cooldowns["quarantine"] = 0
-        self.assertTrue(app.trigger_quarantine_zone((shielded.x, shielded.y)))
-        self.assertGreater(shielded.freeze_timer, 0)
-        self.assertLessEqual(shielded.slow_multiplier, 0.35)
-        self.assertGreater(app.ability_cooldowns["quarantine"], 0)
+        self.assertGreater(gunner.support_buff_timer, 0)
+        self.assertGreater(gunner.support_damage_bonus, 0)
+        self.assertLess(support.support_mana, support.support_max_mana)
+
+        gunner.support_buff_timer = 5.0
+        support.support_mana = support.support_max_mana
+        support.support_cast_cooldown = 0
+        support.update_support(0.1)
+
+        self.assertGreater(enemy.marked_timer, 0)
+        self.assertGreater(enemy.vulnerable_timer, 0)
+
+    def test_ransomware_boss_protocol_locks_nearby_towers(self):
+        app.wave = 10
+        boss = app.create_boss_enemy()
+        tower = app.Tower(180, 180, "sniper", app.SHOP_COSTS["sniper"])
+        boss.x = tower.x + 24
+        boss.y = tower.y
+        app.enemies.append(boss)
+        app.towers.append(tower)
+
+        recommendations, _ = app.get_wave_recommendation(10)
+
+        self.assertEqual(boss.boss_protocol, "ransomware")
+        self.assertTrue(any("Ransomware" in line for line in recommendations))
+        self.assertTrue(boss.trigger_ransomware_lock())
+        self.assertGreater(tower.locked_timer, 0)
+
+        tower.update(0.1)
+
+        self.assertEqual(app.projectiles, [])
 
 
 if __name__ == "__main__":

@@ -11,11 +11,15 @@ class TowerFamilyDataTests(unittest.TestCase):
     def test_tower_family_data_validates(self):
         self.assertEqual(data.validate_tower_family_data(), [])
 
-    def test_root_shop_has_only_eight_families(self):
-        shop_roots = tuple(tower_type for tab in data.SHOP_TABS.values() for tower_type in tab)
+    def test_flat_shop_has_eight_visible_families(self):
+        shop_roots = data.SHOP_TOWER_ORDER
 
-        self.assertEqual(shop_roots, data.ROOT_TOWER_IDS)
+        self.assertEqual(
+            shop_roots,
+            ("machine_gun", "cannon", "frost", "poison", "support", "sniper", "tesla", "barracks"),
+        )
         self.assertEqual(len(shop_roots), 8)
+        self.assertNotIn("archer", shop_roots)
         for legacy_id in data.LEGACY_TOWER_ALIASES:
             self.assertNotIn(legacy_id, shop_roots)
 
@@ -35,7 +39,6 @@ class TowerFamilyDataTests(unittest.TestCase):
 
     def test_legacy_towers_map_to_branch_mechanics(self):
         expected = {
-            "poison": ("archer", "trapline"),
             "flame": ("cannon", "terraformer"),
             "mortar": ("cannon", "artillery"),
             "gold": ("support", "research_lab"),
@@ -48,6 +51,8 @@ class TowerFamilyDataTests(unittest.TestCase):
 
     def test_folded_extra_tower_mechanics_still_exist_in_branches(self):
         self.assertIn("poison", data.BRANCH_DEFINITIONS["archer"]["trapline"]["mechanics"])
+        self.assertIn("poison", data.BRANCH_DEFINITIONS["poison"]["venom_cask"]["mechanics"])
+        self.assertIn("burn", data.BRANCH_DEFINITIONS["poison"]["wildfire"]["mechanics"])
         self.assertIn("poison", data.BRANCH_DEFINITIONS["machine_gun"]["ammo_fabricator"]["mechanics"])
         self.assertIn("burn", data.BRANCH_DEFINITIONS["cannon"]["terraformer"]["mechanics"])
         self.assertIn("mortar", data.BRANCH_DEFINITIONS["cannon"]["artillery"]["mechanics"])

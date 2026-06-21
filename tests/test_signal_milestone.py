@@ -72,6 +72,13 @@ class SignalMilestoneTests(unittest.TestCase):
         self.assertEqual(app.next_wave_bounty_bonus, 2)
         self.assertEqual(app.next_wave_bounty_wave, 7)
 
+    def test_reward_cards_are_milestone_paced(self):
+        self.assertFalse(app.should_offer_reward_cards(1))
+        self.assertFalse(app.should_offer_reward_cards(2))
+        self.assertTrue(app.should_offer_reward_cards(3))
+        self.assertFalse(app.should_offer_reward_cards(4))
+        self.assertTrue(app.should_offer_reward_cards(6))
+
     def test_channeler_spends_mana_on_buffs_and_enemy_debuffs(self):
         support = app.Tower(100, 100, "support", app.SHOP_COSTS["support"])
         gunner = app.Tower(140, 100, "machine_gun", app.SHOP_COSTS["machine_gun"])

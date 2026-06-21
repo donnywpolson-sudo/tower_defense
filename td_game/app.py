@@ -2,12 +2,14 @@ import sys
 import math
 import argparse
 import asyncio
+import copy
 import random
 import pygame
 
 from .assets import draw_sprite_centered, load_image, load_sound, load_sound_any
 from .audio import make_tone
 from .config import *
+from .crash_logging import write_crash_log
 from .data import *
 from .geometry import dist, distance_segment_to_rect, distance_to_segment
 from .mapgen import generate_random_map
@@ -141,22 +143,22 @@ CARD_POOL = {
         "color": (245, 220, 120),
     },
     "research_grant": {
-        "label": "Patch Notes",
-        "description": "Gain bonus research for mastery upgrades.",
+        "label": "Tech Cache",
+        "description": "Gain tech for mastery upgrades.",
         "color": (150, 220, 255),
     },
     "core_patch": {
-        "label": "Core Patch",
-        "description": "Repair core integrity.",
+        "label": "HP Patch",
+        "description": "Repair base health.",
         "color": (130, 225, 145),
     },
     "range_patch": {
-        "label": "Range Protocol",
+        "label": "Range Boost",
         "description": "All towers gain permanent range.",
         "color": (180, 215, 245),
     },
     "damage_patch": {
-        "label": "Damage Protocol",
+        "label": "Damage Boost",
         "description": "All towers gain permanent damage.",
         "color": (245, 155, 110),
     },
@@ -201,9 +203,19 @@ def draw_small_text(text, x, y, color=(230, 230, 230)):
     screen.blit(img, (x, y))
 
 
+def draw_small_text_right(text, right_x, y, color=(230, 230, 230)):
+    img = small_font.render(text, True, color)
+    screen.blit(img, (right_x - img.get_width(), y))
+
+
 def draw_tiny_text(text, x, y, color=(220, 220, 210)):
     img = tiny_font.render(text, True, color)
     screen.blit(img, (x, y))
+
+
+def draw_tiny_text_right(text, right_x, y, color=(220, 220, 210)):
+    img = tiny_font.render(text, True, color)
+    screen.blit(img, (right_x - img.get_width(), y))
 
 
 def wrap_text(text, max_chars):
@@ -221,6 +233,12 @@ def wrap_text(text, max_chars):
     if current:
         lines.append(current)
     return lines
+
+
+def truncate_text(text, max_chars):
+    if len(text) <= max_chars:
+        return text
+    return text[: max(0, max_chars - 1)].rstrip() + "."
 
 def current_paths():
     return active_map.get("paths") or MAPS[current_map_index]["paths"]
@@ -349,7 +367,7 @@ def get_wave_recommendation(wave_number=None):
         tower_types.extend(["cannon", "machine_gun"])
 
     if not recommendations:
-        recommendations.append("Balanced wave. Upgrade your core towers.")
+        recommendations.append("Balanced wave. Upgrade key towers.")
         tower_types.extend(["machine_gun", "support"])
 
     unique_towers = []
@@ -396,6 +414,88 @@ def apply_synergy_damage(tower_type, enemy, amount, damage_type):
     return amount * multiplier, labels
 
 
+def branch_rank(tower, level=None):
+    if tower is None or tower.selected_branch is None:
+        return 0
+    check_level = tower.level if level is None else level
+    if check_level < BRANCH_UNLOCK_LEVEL:
+        return 0
+    return max(1, min(8, check_level - BRANCH_UNLOCK_LEVEL + 1))
+
+
+def mastery_rank(tower, level=None):
+    if tower is None or tower.selected_branch is None:
+        return 0
+    check_level = tower.level if level is None else level
+    if check_level < PARAGON_LEVEL:
+        return 0
+    return max(1, min(5, check_level - PARAGON_LEVEL + 1))
+
+
+def branch_upgrade_effect(tower, next_level):
+    branch = tower.branch_data() if tower else None
+    if branch is None:
+        return None
+    return branch.get("upgrade_effects", {}).get(next_level)
+
+
+def preview_upgraded_tower(tower):
+    if tower is None or tower.upgrade_cost is None:
+        return None
+
+    preview = copy.copy(tower)
+    preview.mutations = list(tower.mutations)
+    preview.available_mutations = list(tower.available_mutations)
+    preview.notified_mutations = set(tower.notified_mutations)
+    preview.level += 1
+    if preview.level == PARAGON_LEVEL:
+        preview.is_paragon = True
+        preview.apply_paragon_stats()
+    elif preview.level > PARAGON_LEVEL:
+        preview.apply_mastery_stats()
+    else:
+        preview.apply_weapon_level_stats()
+    return preview
+
+
+def format_stat_delta(label, delta, decimals=0, suffix=""):
+    if abs(delta) < 0.0001:
+        return None
+    if decimals:
+        amount = f"{delta:+.{decimals}f}"
+    else:
+        amount = f"{delta:+.0f}"
+    return f"{label} {amount}{suffix}"
+
+
+def branch_upgrade_description(tower, next_level):
+    preview = preview_upgraded_tower(tower)
+    if preview is None:
+        return tower_tier_description(tower.tower_type, next_level, tower.selected_branch)
+
+    parts = []
+    if tower.tower_type == "support":
+        mana_delta = preview.support_mana_rate() - tower.support_mana_rate()
+        parts.append(format_stat_delta("Range", preview.range - tower.range))
+        parts.append(format_stat_delta("Mana", mana_delta, 1, "/s"))
+    else:
+        parts.append(format_stat_delta("DMG", preview.damage - tower.damage))
+        parts.append(format_stat_delta("Range", preview.range - tower.range))
+
+    fire_delta = preview.fire_rate - tower.fire_rate
+    if abs(fire_delta) >= 0.001:
+        parts.append(f"Fire {fire_delta:+.3f}s")
+
+    effect = branch_upgrade_effect(tower, next_level)
+    if effect:
+        parts.append(effect)
+
+    compact = [part for part in parts if part]
+    if compact:
+        return " | ".join(compact)
+    return tower_tier_description(tower.tower_type, next_level, tower.selected_branch)
+
+
 def get_scaled_sprite(sprite, size):
     if sprite is None:
         return None
@@ -423,9 +523,160 @@ def draw_glow(x, y, color, radius=18, alpha=50):
     screen.blit(glow, (int(x - radius), int(y - radius)), special_flags=pygame.BLEND_ADD)
 
 
-def emit_particles(x, y, color, count=6, speed=70, size=4, lifetime=0.45):
+def emit_particles(x, y, color, count=6, speed=70, size=4, lifetime=0.45, alpha=1.0):
     if render_options.enable_particles and particle_manager is not None:
-        particle_manager.emit(x, y, color, count, speed, size, lifetime)
+        particle_manager.emit(x, y, color, count, speed, size, lifetime, alpha=alpha)
+
+
+def emit_shot_particles(x, y, color, count=1, speed=28, size=2, lifetime=0.14, chance=0.65):
+    if not render_options.enable_particles or particle_manager is None:
+        return
+    if len(enemies) >= BUSY_ENEMY_COUNT:
+        chance *= 0.55
+    if random.random() > chance:
+        return
+    particle_manager.emit(x, y, color, max(1, count), speed, size, lifetime, alpha=0.58)
+
+
+def _round_state_number(value):
+    if isinstance(value, (int, float)):
+        return round(float(value), 3)
+    return value
+
+
+def _position_state(obj):
+    return [_round_state_number(getattr(obj, "x", 0)), _round_state_number(getattr(obj, "y", 0))]
+
+
+def _compact_tower_state(tower):
+    if tower is None:
+        return None
+    return {
+        "type": getattr(tower, "tower_type", None),
+        "branch": getattr(tower, "selected_branch", None),
+        "level": getattr(tower, "level", None),
+        "pos": _position_state(tower),
+        "range": _round_state_number(getattr(tower, "range", 0)),
+        "fire_rate": _round_state_number(getattr(tower, "fire_rate", 0)),
+        "cooldown": _round_state_number(getattr(tower, "cooldown", 0)),
+        "kills": getattr(tower, "kills", None),
+        "shots_fired": getattr(tower, "shots_fired", None),
+        "locked_timer": _round_state_number(getattr(tower, "locked_timer", 0)),
+        "mutations": list(getattr(tower, "mutations", [])),
+    }
+
+
+def _compact_enemy_state(enemy):
+    return {
+        "kind": getattr(enemy, "kind", None),
+        "affix": getattr(enemy, "affix", None),
+        "boss": getattr(enemy, "boss", False),
+        "commander": getattr(enemy, "commander", False),
+        "flying": getattr(enemy, "flying", False),
+        "split_child": getattr(enemy, "is_split_child", False),
+        "pos": _position_state(enemy),
+        "hp": _round_state_number(getattr(enemy, "hp", 0)),
+        "max_hp": _round_state_number(getattr(enemy, "max_hp", 0)),
+        "path_index": getattr(enemy, "path_index", None),
+        "target_index": getattr(enemy, "target_index", None),
+        "shield_hits": getattr(enemy, "shield_hits", None),
+        "reached_end": getattr(enemy, "reached_end", False),
+        "death_spawns": getattr(enemy, "death_spawns", 0),
+    }
+
+
+def _compact_projectile_state(projectile):
+    return {
+        "tower_type": getattr(projectile, "tower_type", None),
+        "tower_level": getattr(projectile, "tower_level", None),
+        "pos": _position_state(projectile),
+        "target_kind": getattr(getattr(projectile, "target", None), "kind", None),
+        "dead": getattr(projectile, "dead", False),
+    }
+
+
+def collect_crash_state():
+    enemy_kinds = {}
+    for enemy in enemies:
+        kind = getattr(enemy, "kind", "unknown")
+        enemy_kinds[kind] = enemy_kinds.get(kind, 0) + 1
+
+    try:
+        enemies_per_wave = get_enemies_per_wave()
+    except Exception:
+        enemies_per_wave = None
+
+    try:
+        spawn_interval = get_spawn_interval()
+    except Exception:
+        spawn_interval = None
+
+    try:
+        paths = current_paths()
+        path_count = len(paths)
+    except Exception:
+        path_count = None
+
+    particles = getattr(particle_manager, "particles", [])
+    return {
+        "wave": wave,
+        "wave_active": wave_active,
+        "spawned_this_wave": spawned_this_wave,
+        "enemies_per_wave": enemies_per_wave,
+        "spawn_timer": _round_state_number(spawn_timer),
+        "spawn_interval": _round_state_number(spawn_interval),
+        "money": money,
+        "lives": lives,
+        "score": score,
+        "research_points": research_points,
+        "game_over": game_over,
+        "victory": victory,
+        "paused": paused,
+        "game_speed": game_speed,
+        "pending_card_choices": list(pending_card_choices),
+        "selected_build_type": selected_build_type,
+        "selected_tower": _compact_tower_state(selected_tower),
+        "counts": {
+            "enemies": len(enemies),
+            "towers": len(towers),
+            "projectiles": len(projectiles),
+            "effects": len(effects),
+            "particles": len(particles),
+        },
+        "enemy_kinds": enemy_kinds,
+        "map": {
+            "name": active_map.get("name"),
+            "seed": active_map.get("seed"),
+            "theme": current_theme(),
+            "path_count": path_count,
+            "spawn_path_index": spawn_path_index,
+        },
+        "render_options": {
+            "renderer": getattr(render_options, "renderer", None),
+            "enable_glow": getattr(render_options, "enable_glow", None),
+            "enable_particles": getattr(render_options, "enable_particles", None),
+            "enable_screen_shake": getattr(render_options, "enable_screen_shake", None),
+            "max_particles": getattr(render_options, "max_particles", None),
+        },
+        "window": {
+            "window_width": window_width,
+            "window_height": window_height,
+            "scale": _round_state_number(scale),
+            "offset_x": offset_x,
+            "offset_y": offset_y,
+        },
+        "towers": [_compact_tower_state(tower) for tower in towers[:16]],
+        "enemies": [_compact_enemy_state(enemy) for enemy in enemies[:24]],
+        "projectiles": [_compact_projectile_state(projectile) for projectile in projectiles[:16]],
+    }
+
+
+def write_current_crash_log(exc):
+    try:
+        state = collect_crash_state()
+    except Exception as state_exc:
+        state = {"crash_state_error": repr(state_exc)}
+    return write_crash_log(exc, state)
 
 
 def init_images():
@@ -1145,7 +1396,10 @@ class Tower:
         self.support_buff_timer = 0.0
         self.support_damage_bonus = 0.0
         self.support_rate_bonus = 0.0
+        self.support_range_bonus = 0.0
         self.support_casts = 0
+        self.spin_heat = 0.0
+        self.overclock_pulse_timer = 0.0
         if tower_type:
             self.tower_type, self.selected_branch = normalize_tower_type(tower_type)
             self.level = 2
@@ -1508,11 +1762,15 @@ class Tower:
             if self.support_buff_timer == 0:
                 self.support_damage_bonus = 0.0
                 self.support_rate_bonus = 0.0
+                self.support_range_bonus = 0.0
 
         if self.support_cast_cooldown > 0:
             self.support_cast_cooldown = max(0.0, self.support_cast_cooldown - dt)
 
         self.update_mutation_timers(dt)
+        self.spin_heat = max(0.0, self.spin_heat - dt * (0.10 if self.level >= 9 else 0.16))
+        if self.branch_has("overclock"):
+            self.update_battery_grid(dt)
 
         if self.fire_anim_timer > 0:
             self.fire_anim_timer -= dt
@@ -1540,8 +1798,10 @@ class Tower:
             if len(projectiles) < MAX_ACTIVE_PROJECTILES:
                 projectiles.append(Projectile(self.x, self.y, target, self))
                 self.shots_fired += 1
+                if self.selected_branch == "vulcan":
+                    self.spin_heat = min(1.0 + mastery_rank(self) * 0.08, self.spin_heat + 0.10 + branch_rank(self) * 0.018)
                 data = TOWER_TYPES.get(self.tower_type, {})
-                emit_particles(self.x, self.y, data.get("projectile_color", (245, 220, 80)), 3, 40, 3, 0.18)
+                emit_shot_particles(self.x, self.y, data.get("projectile_color", (245, 220, 80)), 1, 26, 2, 0.11, 0.75)
                 play_sound(self.tower_type, tower_sound_cooldown(self.tower_type))
             self.fire_anim_timer = 0.12
             self.cooldown = self.effective_fire_rate()
@@ -1573,6 +1833,42 @@ class Tower:
         self.mastery_xp += 0.2
         self.gold_income_timer = max(1.8, 4.2 - self.level * 0.28)
         add_floating_text(self.x - 12, self.y - 42, f"+${bonus}", TOWER_TYPES["gold"]["projectile_color"])
+
+    def update_battery_grid(self, dt):
+        if not wave_active:
+            return
+
+        allies = [
+            tower for tower in towers
+            if tower is not self
+            and tower.tower_type not in (None, "support")
+            and dist((self.x, self.y), (tower.x, tower.y)) <= self.effective_range()
+        ]
+        if not allies:
+            return
+
+        rank = branch_rank(self)
+        mastery = mastery_rank(self)
+        self.overclock_pulse_timer -= dt
+        if self.overclock_pulse_timer > 0:
+            return
+
+        interval = max(1.4, 3.1 - rank * 0.16 - mastery * 0.10)
+        duration = 2.4 + rank * 0.24 + mastery * 0.24
+        rate_bonus = 0.06 + rank * 0.007 + mastery * 0.01
+        damage_bonus = 0.0 if self.level < 9 else 0.04 + mastery * 0.006
+        target_count = 1 + (1 if self.level >= 5 else 0) + (1 if self.level >= 8 else 0)
+
+        allies.sort(key=lambda tower: (tower.support_buff_timer, dist((self.x, self.y), (tower.x, tower.y))))
+        for ally in allies[:target_count]:
+            ally.support_buff_timer = max(ally.support_buff_timer, duration)
+            ally.support_rate_bonus = max(ally.support_rate_bonus, min(0.22, rate_bonus))
+            ally.support_damage_bonus = max(ally.support_damage_bonus, min(0.14, damage_bonus))
+            add_effect(SparkEffect(ally.x, ally.y, TOWER_TYPES["tesla"]["projectile_color"], 14, 0.20, "lightning_spark"))
+            add_floating_text(ally.x - 22, ally.y - 44, "OVERCLOCK", TOWER_TYPES["tesla"]["projectile_color"])
+
+        self.overclock_pulse_timer = interval
+        self.mastery_xp += 0.4
 
     def update_barracks(self, dt):
         for enemy in enemies:
@@ -1716,7 +2012,7 @@ class Tower:
         self.mastery_xp += 0.6
         if self.branch_has("research") and self.support_casts % 3 == 0:
             research_points += 1
-            add_floating_text(self.x - 20, self.y - 44, "+1 Research", (150, 220, 255))
+            add_floating_text(self.x - 20, self.y - 44, "+1 Tech", (150, 220, 255))
 
     def find_target(self):
         valid = []
@@ -2157,7 +2453,7 @@ def award_enemy_death_credit(enemy):
             tower.mastery_xp += 0.18
             if enemy.boss or (tower.nearby_deaths > 0 and tower.nearby_deaths % 14 == 0):
                 research_points += 1
-                add_floating_text(tower.x - 18, tower.y - 44, "+1 Research", (150, 220, 255))
+                add_floating_text(tower.x - 18, tower.y - 44, "+1 Tech", (150, 220, 255))
 
     if enemy.marked_timer > 0 and (has_tower_mechanic("marked_reward") or has_tower_mechanic("research")):
         money += 1
@@ -2206,46 +2502,46 @@ class Projectile:
         if self.trail_timer > 0:
             return
 
-        self.trail_timer = 0.035
+        self.trail_timer = 0.07
 
         if self.tower_type == "archer":
             add_effect(SparkEffect(self.x, self.y, (210, 160, 90), 3, 0.10))
-            emit_particles(self.x, self.y, (210, 160, 90), 1, 18, 2, 0.12)
+            emit_shot_particles(self.x, self.y, (210, 160, 90), 1, 14, 1.6, 0.08, 0.45)
         elif self.tower_type == "machine_gun":
             add_effect(SparkEffect(self.x, self.y, (255, 230, 120), 3, 0.08))
-            emit_particles(self.x, self.y, (255, 230, 120), 1, 22, 2, 0.14)
+            emit_shot_particles(self.x, self.y, (255, 230, 120), 1, 16, 1.6, 0.08, 0.35)
         elif self.tower_type == "cannon":
             add_effect(SparkEffect(self.x, self.y, (90, 80, 70), 6, 0.18, "smoke"))
-            emit_particles(self.x, self.y, (90, 80, 70), 2, 24, 3, 0.22)
+            emit_shot_particles(self.x, self.y, (90, 80, 70), 1, 18, 2.2, 0.14, 0.55)
         elif self.tower_type == "frost":
             add_effect(SparkEffect(self.x, self.y, (185, 240, 255), 5, 0.18, "frost_mist"))
-            emit_particles(self.x, self.y, (185, 240, 255), 2, 24, 3, 0.22)
+            emit_shot_particles(self.x, self.y, (185, 240, 255), 1, 18, 2.2, 0.14, 0.55)
         elif self.tower_type == "poison":
             add_effect(SparkEffect(self.x, self.y, (125, 235, 95), 5, 0.16, "poison_cloud"))
-            emit_particles(self.x, self.y, (125, 235, 95), 2, 20, 3, 0.18)
+            emit_shot_particles(self.x, self.y, (125, 235, 95), 1, 16, 2, 0.12, 0.55)
         elif self.tower_type == "flame":
             add_effect(SparkEffect(self.x, self.y, (255, 115, 45), 5, 0.12, "flame_burst"))
-            emit_particles(self.x, self.y, (255, 115, 45), 2, 32, 3, 0.16)
+            emit_shot_particles(self.x, self.y, (255, 115, 45), 1, 22, 2, 0.10, 0.55)
         elif self.tower_type == "mortar":
             add_effect(SparkEffect(self.x, self.y, (95, 85, 70), 8, 0.22, "smoke"))
-            emit_particles(self.x, self.y, (95, 85, 70), 2, 20, 4, 0.24)
+            emit_shot_particles(self.x, self.y, (95, 85, 70), 1, 16, 2.8, 0.16, 0.55)
         elif self.tower_type == "gold":
             add_effect(SparkEffect(self.x, self.y, (255, 220, 90), 5, 0.12, "coin_sparkle"))
-            emit_particles(self.x, self.y, (255, 220, 90), 1, 22, 3, 0.16)
+            emit_shot_particles(self.x, self.y, (255, 220, 90), 1, 16, 2, 0.10, 0.45)
         elif self.tower_type == "tesla":
             jittered = (
                 self.x + math.sin(self.trail_timer + self.x) * 8,
                 self.y + math.cos(self.trail_timer + self.y) * 8,
             )
             add_effect(LightningEffect((self.x, self.y), jittered, duration=0.04))
-            emit_particles(self.x, self.y, (255, 245, 90), 1, 28, 2, 0.12)
+            emit_shot_particles(self.x, self.y, (255, 245, 90), 1, 20, 1.6, 0.08, 0.40)
 
     def hit_target(self):
         global money
 
         self.spawn_hit_effect()
         data = TOWER_TYPES.get(self.tower_type, {})
-        emit_particles(self.target.x, self.target.y, data.get("projectile_color", (245, 220, 80)), 4, 60, 3, 0.24)
+        emit_shot_particles(self.target.x, self.target.y, data.get("projectile_color", (245, 220, 80)), 2, 36, 2, 0.14, 0.85)
         damage_type = self.get_damage_type()
         shield_before = self.target.shield_hits
         damage, synergy_labels = apply_synergy_damage(self.tower_type, self.target, self.damage, damage_type)
@@ -3035,10 +3331,10 @@ def get_upgrade_options(tower):
     min_towers = get_min_towers_for_upgrade(tower.level) if tower.level >= BASE_MAX_TOWER_LEVEL else 1
     if next_level == PARAGON_LEVEL:
         title = data["paragon"]
-        description = f"Costs {research_cost} research, needs {min_towers} towers"
+        description = ""
     elif next_level > PARAGON_LEVEL:
-        title = f"Mastery Level {next_level}"
-        description = f"Costs {research_cost} research, needs {min_towers} towers"
+        title = f"Mastery {next_level}"
+        description = ""
     else:
         title = tower_tier_name(tower.tower_type, next_level, tower.selected_branch)
         description = tower_tier_description(tower.tower_type, next_level, tower.selected_branch)
@@ -3278,32 +3574,23 @@ def draw_upgrade_panel():
         tower_name = f"{data['label']} Tower" if data else "Basic Tower"
     draw_text(tower_name, panel.x + 14, panel.y + 12, (255, 255, 255))
     if selected_tower.tower_type == "support":
-        stat_text = f"Level {selected_tower.level}  Mana {int(selected_tower.support_mana)}/{int(selected_tower.support_max_mana)}  RNG {int(selected_tower.range)}"
+        stat_text = f"L{selected_tower.level} | Mana {int(selected_tower.support_mana)}/{int(selected_tower.support_max_mana)} | Range {int(selected_tower.effective_range())}"
     else:
-        stat_text = f"Level {selected_tower.level}  DMG {int(selected_tower.damage)}  RNG {int(selected_tower.range)}"
+        stat_text = f"L{selected_tower.level} | DMG {int(selected_tower.damage)} | Range {int(selected_tower.effective_range())}"
     draw_small_text(stat_text, panel.x + 14, panel.y + 38, (210, 210, 190))
     family = data.get("family", data["label"]) if data else "Basic"
+    family = family.replace(" Family", "")
     branch = selected_tower.branch_data()
     if branch:
         progress = min(5, max(1, selected_tower.level - BRANCH_UNLOCK_LEVEL + 1))
         focus = FOCUS_LABELS.get(branch["focus"], branch["focus"].title())
-        branch_text = f"{branch['short']} {focus} Path {progress}/5"
+        branch_text = f"{branch['short']} {focus} {progress}/5"
+    elif selected_tower.needs_branch_choice():
+        branch_text = "Pick branch"
     else:
-        branch_text = "Choose branch at Tier 3"
-    draw_small_text(
-        family,
-        panel.x + 14,
-        panel.y + 58,
-        (215, 225, 200),
-    )
-    compact_branch_text = branch_text if len(branch_text) <= 25 else branch_text[:24] + "."
-    draw_tiny_text(compact_branch_text, panel.x + 14, panel.y + 79, branch["color"] if branch else (230, 220, 150))
-    draw_tiny_text(
-        f"Traits {len(selected_tower.mutations)}/{MUTATION_SLOT_LIMIT}",
-        panel.right - 86,
-        panel.y + 80,
-        (215, 225, 200),
-    )
+        branch_text = "Branch at L3"
+    details = f"{family} | {branch_text} | Traits {len(selected_tower.mutations)}/{MUTATION_SLOT_LIMIT}"
+    draw_tiny_text(truncate_text(details, 42), panel.x + 14, panel.y + 64, branch["color"] if branch else (230, 220, 150))
     for rect, mutation_key in get_owned_mutation_badge_rects(selected_tower):
         mutation = MUTATION_TRAITS[mutation_key]
         pygame.draw.rect(screen, (34, 38, 34), rect)
@@ -3313,7 +3600,7 @@ def draw_upgrade_panel():
         needed = RESEARCH_UPGRADE_COSTS[selected_tower.level]
         min_towers = get_min_towers_for_upgrade(selected_tower.level)
         draw_small_text(
-            f"Research {research_points}/{needed}  Towers {len(towers)}/{min_towers}",
+            f"Tech {research_points}/{needed} | Towers {len(towers)}/{min_towers}",
             panel.x + 14,
             panel.y + 94,
             (230, 220, 150),
@@ -3321,7 +3608,7 @@ def draw_upgrade_panel():
 
     branch_buttons = get_branch_button_rects(selected_tower)
     if branch_buttons:
-        draw_small_text("Choose Tier 3 Branch", panel.x + 14, panel.y + 98, (245, 235, 180))
+        draw_small_text("Pick Branch", panel.x + 14, panel.y + 92, (245, 235, 180))
         for index, (rect, option) in enumerate(branch_buttons):
             enabled = option["enabled"]
             fill = (34, 44, 38) if enabled else (48, 38, 38)
@@ -3329,12 +3616,8 @@ def draw_upgrade_panel():
             text_color = (245, 245, 235) if enabled else (165, 140, 140)
             pygame.draw.rect(screen, fill, rect)
             pygame.draw.rect(screen, outline, rect, 2)
-            draw_small_text(f"{index + 1}. {option['title']}", rect.x + 8, rect.y + 4, text_color)
-            draw_tiny_text(f"${option['cost']}", rect.right - 42, rect.y + 7, text_color)
-            preview = f"{option['focus']}: {option['effect_preview']}"
-            if len(preview) > 34:
-                preview = preview[:33] + "."
-            draw_tiny_text(preview, rect.x + 8, rect.y + 19, (215, 220, 200) if enabled else text_color)
+            draw_small_text(f"{index + 1}. {option['title']}", rect.x + 8, rect.y + 7, text_color)
+            draw_tiny_text_right(f"${option['cost']}", rect.right - 8, rect.y + 10, text_color)
         draw_target_button()
         draw_sell_button()
         return
@@ -3344,9 +3627,7 @@ def draw_upgrade_panel():
         pygame.draw.rect(screen, (34, 42, 38), rect)
         pygame.draw.rect(screen, mutation["color"], rect, 2)
         draw_small_text(f"Mutate: {mutation['label']}", rect.x + 8, rect.y + 5, (245, 245, 235))
-        description = mutation["description"]
-        if len(description) > 34:
-            description = description[:33] + "."
+        description = truncate_text(mutation["description"], 34)
         draw_tiny_text(description, rect.x + 8, rect.y + 22, (215, 220, 200))
 
     options = get_upgrade_options(selected_tower)
@@ -3372,12 +3653,10 @@ def draw_upgrade_panel():
         draw_small_text(option["title"], rect.x + 10, rect.y + 6, text_color)
         price_text = f"${option['cost']}"
         if option.get("research_cost", 0):
-            price_text += f" R{option['research_cost']}"
-        draw_small_text(price_text, rect.right - 84, rect.y + 6, text_color)
-        if rect.h >= 42:
-            description = option["description"]
-            if len(description) > 30:
-                description = description[:29] + "."
+            price_text += f" +{option['research_cost']} Tech"
+        draw_small_text_right(price_text, rect.right - 8, rect.y + 6, text_color)
+        if rect.h >= 42 and option["description"]:
+            description = truncate_text(option["description"], 30)
             draw_small_text(description, rect.x + 10, rect.y + 24, (205, 205, 190) if enabled else text_color)
 
     draw_sell_button()
@@ -3389,14 +3668,14 @@ def draw_sell_button():
     refund = get_sell_refund(selected_tower)
     pygame.draw.rect(screen, (58, 43, 38), sell_rect)
     pygame.draw.rect(screen, (215, 125, 85), sell_rect, 2)
-    draw_small_text(f"Sell tower +${refund}", sell_rect.x + 10, sell_rect.y + 9, (255, 230, 210))
+    draw_small_text(f"Sell +${refund}", sell_rect.x + 10, sell_rect.y + 9, (255, 230, 210))
 
 
 def draw_target_button():
     rect = get_target_button_rect()
     pygame.draw.rect(screen, (38, 48, 58), rect)
     pygame.draw.rect(screen, (110, 150, 190), rect, 2)
-    draw_small_text(f"Target: {selected_tower.target_mode.title()}", rect.x + 10, rect.y + 7, (225, 235, 245))
+    draw_small_text(f"Target {selected_tower.target_mode.title()}", rect.x + 10, rect.y + 7, (225, 235, 245))
 
 
 def get_start_wave_button_rect():
@@ -3423,12 +3702,12 @@ def get_reward_card_rects():
     if not pending_card_choices:
         return []
 
-    card_w = 190
-    card_h = 112
+    card_w = 180
+    card_h = 78
     gap = 20
     total_w = card_w * 3 + gap * 2
     start_x = (MAP_WIDTH - total_w) // 2
-    y = 168
+    y = 184
     return [
         (pygame.Rect(start_x + index * (card_w + gap), y, card_w, card_h), card_key)
         for index, card_key in enumerate(pending_card_choices[:3])
@@ -3449,13 +3728,17 @@ def generate_reward_card_choices(completed_wave):
     return card_keys[:3]
 
 
+def should_offer_reward_cards(completed_wave):
+    return completed_wave > 0 and completed_wave % PROTOCOL_REWARD_INTERVAL == 0
+
+
 def reward_card_effect_text(card_key):
     if card_key == "cpu_cache":
         return "+$60 CPU"
     if card_key == "research_grant":
-        return "+2 Research"
+        return "+2 Tech"
     if card_key == "core_patch":
-        return "+4 Core"
+        return "+4 HP"
     if card_key == "range_patch":
         return "+4% Range"
     if card_key == "damage_patch":
@@ -3510,7 +3793,7 @@ def complete_current_wave():
     earned_research = get_research_reward(completed_wave)
     money += START_WAVE_BONUS + wave
     research_points += earned_research
-    add_floating_text(MAP_WIDTH // 2 - 30, 90, f"+{earned_research} Research", (150, 220, 255))
+    add_floating_text(MAP_WIDTH // 2 - 30, 90, f"+{earned_research} Tech", (150, 220, 255))
     play_sound("wave_complete", 0.3)
 
     if next_wave_bounty_wave == completed_wave:
@@ -3525,8 +3808,10 @@ def complete_current_wave():
     if wave > MAX_WAVE and not endless_mode:
         victory = True
         pending_card_choices = []
-    else:
+    elif should_offer_reward_cards(completed_wave):
         pending_card_choices = generate_reward_card_choices(completed_wave)
+    else:
+        pending_card_choices = []
 
 
 def start_wave():
@@ -3661,7 +3946,7 @@ def draw_start_and_speed_controls():
     outline = (105, 210, 120) if start_enabled else (95, 95, 85)
     pygame.draw.rect(screen, fill, rect)
     pygame.draw.rect(screen, outline, rect, 2)
-    label = "Start Wave" if not pending_card_choices else "Choose Protocol"
+    label = "Start Wave" if not pending_card_choices else "Pick Bonus"
     draw_small_text(label, rect.x + 64, rect.y + 9, (245, 255, 245) if start_enabled else (155, 155, 145))
 
     pause_rect = get_pause_button_rect()
@@ -3691,15 +3976,13 @@ def draw_reward_cards():
     overlay.fill((5, 8, 10, 138))
     screen.blit(overlay, (0, 0))
 
-    draw_text("Choose System Protocol", 320, 120, (245, 250, 255))
+    draw_text("Pick Bonus", 372, 132, (245, 250, 255))
     for rect, card_key in get_reward_card_rects():
         card = CARD_POOL[card_key]
         pygame.draw.rect(screen, (24, 31, 34), rect)
         pygame.draw.rect(screen, card["color"], rect, 2)
         draw_small_text(card["label"], rect.x + 12, rect.y + 12, (255, 255, 245))
         draw_small_text(reward_card_effect_text(card_key), rect.x + 12, rect.y + 40, card["color"])
-        for index, line in enumerate(wrap_text(card["description"], 23)[:2]):
-            draw_tiny_text(line, rect.x + 12, rect.y + 70 + index * 16, (215, 225, 225))
 
 
 def draw_role_icon(icon_key, x, y, enabled=True):
@@ -3766,7 +4049,6 @@ def draw_tower_shop():
             text_x = rect.x + 7
         draw_tiny_text(data["label"], text_x, rect.y + 4, (245, 245, 235) if affordable else (165, 140, 140))
         draw_tiny_text(f"${SHOP_COSTS[tower_type]}", rect.right - 38, rect.y + 15, (225, 225, 205) if affordable else (150, 130, 130))
-        draw_tower_role_icons(tower_type, text_x, rect.y + 19, affordable)
 
 
 def draw_wave_timeline():
@@ -3896,14 +4178,10 @@ def draw_sidebar_tooltips():
             if rect.collidepoint(mouse_pos):
                 lines = [
                     f"{option['title']} - ${option['cost']}",
-                    f"Focus: {option['focus']}",
                     option["role"],
+                    option["effect_preview"],
                 ]
-                lines.extend(wrap_text(option["effect_preview"], 32))
-                lines.extend(wrap_text(f"Synergy: {option['synergy']}", 32))
-                lines.extend(wrap_text(f"Keystone: {option['keystone']}", 32))
-                if not option["enabled"]:
-                    lines.append("Not enough money")
+                lines.append("Click to choose" if option["enabled"] else "Need money")
                 draw_tooltip(lines, rect.y - 72)
                 return
 
@@ -3921,16 +4199,12 @@ def draw_sidebar_tooltips():
             if rect.collidepoint(mouse_pos):
                 cost_line = f"Cost: ${option['cost']}"
                 if option.get("research_cost", 0):
-                    cost_line += f" + {option['research_cost']} research"
-                lines = [option["title"], cost_line, option["description"]]
-                if option.get("synergy"):
-                    lines.extend(wrap_text(f"Synergy: {option['synergy']}", 32))
-                if option.get("keystone") and selected_tower.level >= BASE_MAX_TOWER_LEVEL - 1:
-                    lines.extend(wrap_text(f"Keystone: {option['keystone']}", 32))
-                if option.get("mastery") and selected_tower.level >= PARAGON_LEVEL:
-                    lines.extend(wrap_text(f"Mastery: {option['mastery']}", 32))
+                    cost_line += f" + {option['research_cost']} Tech"
+                lines = [option["title"], cost_line]
+                if option["description"]:
+                    lines.append(option["description"])
                 if not option["enabled"]:
-                    lines.append("Need money, research, or more towers")
+                    lines.append("Need money, Tech, or towers")
                 draw_tooltip(lines, rect.y - 86)
                 return
 
@@ -4191,9 +4465,9 @@ async def run_async(argv=None, exit_on_quit=False):
             particle_manager.draw(screen)
 
         draw_text(f"CPU: ${money}", 15, 15)
-        draw_text(f"Core: {lives}", 150, 15)
+        draw_text(f"HP: {lives}", 150, 15)
         draw_text(f"Wave: {wave}/{MAX_WAVE}", 250, 15)
-        draw_text(f"Research: {research_points}", 390, 15)
+        draw_text(f"Tech: {research_points}", 390, 15)
         draw_small_text(
             f"Wave type: {get_wave_label()}",
             15,
@@ -4237,7 +4511,13 @@ async def run_async(argv=None, exit_on_quit=False):
 
 
 def run(argv=None):
-    asyncio.run(run_async(argv, exit_on_quit=True))
+    try:
+        asyncio.run(run_async(argv, exit_on_quit=True))
+    except SystemExit:
+        raise
+    except Exception as exc:
+        write_current_crash_log(exc)
+        raise
 
 
 if __name__ == "__main__":

@@ -492,18 +492,18 @@ BRANCH_DEFINITIONS = {
             },
         },
         "research_lab": {
-            "name": "Research Lab",
+            "name": "Tech Lab",
             "short": "RL",
-            "role": "Research gain and upgrade discounts",
-            "effect_preview": "Generates research and discounts upgrades.",
+            "role": "Tech gain and upgrade discounts",
+            "effect_preview": "Generates tech and discounts upgrades.",
             "mechanics": ("research", "discount", "prototype", "gold"),
             "tags": ("weird", "economy", "research"),
             "color": (210, 220, 120),
-            "tiers": {3: "Research Lab", 4: "Prototype Desk", 5: "Adaptive Institute"},
+            "tiers": {3: "Tech Lab", 4: "Prototype Desk", 5: "Adaptive Institute"},
             "descriptions": {
-                3: "Assists grant small research progress",
+                3: "Assists grant small tech progress",
                 4: "Prototype discounts help nearby upgrades",
-                5: "Adaptive research improves long-term scaling",
+                5: "Adaptive tech improves long-term scaling",
             },
         },
         "signal_tower": {
@@ -519,6 +519,529 @@ BRANCH_DEFINITIONS = {
                 3: "Signals paint priority enemies",
                 4: "Threat scanner improves shared targeting",
                 5: "Tactical grid improves battlefield control",
+            },
+        },
+    },
+}
+
+BRANCH_IDENTITY = {
+    "archer": {
+        "deadeye": {
+            "signature": "priority_mark_crit",
+            "primary_mechanic": "priority mark",
+            "late_descriptions": {
+                6: "Paragon arrows extend marks and punish bosses harder",
+                7: "Marked priority targets take stronger critical hits",
+                8: "Boss pressure ramps faster during long fights",
+                9: "Marks persist longer through crowded waves",
+                10: "Critline mastery deletes weakened marked enemies",
+            },
+            "upgrade_effects": {
+                3: "Mark duration +2.0s",
+                4: "Crit damage +35%",
+                5: "Boss mark duration +0.7s",
+                6: "Mark uptime +25%",
+                7: "Marked damage +6%",
+                8: "Boss ramp +8%",
+                9: "Mark duration +0.5s",
+                10: "Execute threshold +8%",
+            },
+        },
+        "trapline": {
+            "signature": "venom_snareline",
+            "primary_mechanic": "snare trap",
+            "late_descriptions": {
+                6: "Paragon snares spread farther along the lane",
+                7: "Venom traps last longer on fast enemies",
+                8: "Snared enemies carry weaker poison to nearby packs",
+                9: "Trapline uptime improves during dense waves",
+                10: "Wildwood mastery keeps priority targets trapped",
+            },
+            "upgrade_effects": {
+                3: "Snare slow +0.9s",
+                4: "Anti-regen +25%",
+                5: "Trap spread +1 target",
+                6: "Trap spread radius +18",
+                7: "Snare duration +0.4s",
+                8: "Poison spread +1 target",
+                9: "Trap uptime +10%",
+                10: "Priority snare +0.6s",
+            },
+        },
+        "beastmaster": {
+            "signature": "companion_strikes",
+            "primary_mechanic": "pet strike",
+            "late_descriptions": {
+                6: "Paragon companions strike priority enemies more often",
+                7: "Wolf holds last longer on wounded enemies",
+                8: "Companion assists hit elites harder",
+                9: "Bearwarden strikes splash to nearby ground enemies",
+                10: "Beastmaster mastery doubles down on companion assists",
+            },
+            "upgrade_effects": {
+                3: "Pet hit +16%",
+                4: "Wounded hold +0.3s",
+                5: "Elite pet damage +25%",
+                6: "Assist rate +20%",
+                7: "Hold duration +0.3s",
+                8: "Elite damage +8%",
+                9: "Assist cleave +1 target",
+                10: "Pet hit +12%",
+            },
+        },
+    },
+    "machine_gun": {
+        "vulcan": {
+            "signature": "spin_up_heat",
+            "primary_mechanic": "heat ramp",
+            "late_descriptions": {
+                6: "Vulcan paragon raises heat capacity and burst damage",
+                7: "Sustained fire ramps attack speed faster",
+                8: "High heat shots burst into extra swarm damage",
+                9: "Heat decays slower between targets",
+                10: "Maximum heat triggers stronger overheat bursts",
+            },
+            "upgrade_effects": {
+                3: "Heat rate +12%",
+                4: "Spin cap +1 stage",
+                5: "Overheat burst unlocks",
+                6: "Heat cap +20%",
+                7: "Rate ramp +4%",
+                8: "Burst damage +10%",
+                9: "Heat decay -15%",
+                10: "Max-heat burst +1",
+            },
+        },
+        "suppression": {
+            "signature": "pin_stack_panic",
+            "primary_mechanic": "pin stacks",
+            "late_descriptions": {
+                6: "Suppression paragon raises pin stacks and panic duration",
+                7: "Rapid hits pin fast and hasted enemies harder",
+                8: "Pinned enemies briefly panic when stacks peak",
+                9: "Suppression stacks last longer between bullets",
+                10: "Panic zones disrupt dense fast pushes",
+            },
+            "upgrade_effects": {
+                3: "Pin stacks +2 max",
+                4: "Pin duration +0.4s",
+                5: "Panic trigger unlocks",
+                6: "Pin stacks +1 max",
+                7: "Fast slow +6%",
+                8: "Panic freeze +0.08s",
+                9: "Stack decay -20%",
+                10: "Panic radius +20",
+            },
+        },
+        "ammo_fabricator": {
+            "signature": "adaptive_round_cycle",
+            "primary_mechanic": "adaptive ammo",
+            "late_descriptions": {
+                6: "Ammo paragon improves AP, frangible, and tracer rounds",
+                7: "AP rounds strip shields and armor more reliably",
+                8: "Frangible rounds cleave swarm targets harder",
+                9: "Tracer rounds expose priority targets longer",
+                10: "Adaptive arsenal rotates stronger counters per hit",
+            },
+            "upgrade_effects": {
+                3: "Adaptive check +1 tag",
+                4: "Tracer expose +0.5s",
+                5: "Counter bonus +12%",
+                6: "Ammo bonus +15%",
+                7: "AP strip +1 shield",
+                8: "Frangible cleave +1",
+                9: "Tracer mark +0.5s",
+                10: "Counter bonus +8%",
+            },
+        },
+    },
+    "cannon": {
+        "artillery": {
+            "signature": "bombardment_clusters",
+            "primary_mechanic": "bombardment",
+            "late_descriptions": {
+                6: "Artillery paragon adds wider bombardment clusters",
+                7: "Cluster shells gain a larger secondary blast",
+                8: "Bombardment hits more grouped enemies per shell",
+                9: "Long-range shells retain more splash damage",
+                10: "Map bombardment punishes dense waves with extra bursts",
+            },
+            "upgrade_effects": {
+                3: "Splash radius +18",
+                4: "Cluster targets +2",
+                5: "Splash damage +18%",
+                6: "Blast radius +24",
+                7: "Cluster radius +12",
+                8: "Cluster targets +1",
+                9: "Splash falloff -10%",
+                10: "Extra burst +1",
+            },
+        },
+        "demolition": {
+            "signature": "breach_stack_exposure",
+            "primary_mechanic": "breach stacks",
+            "late_descriptions": {
+                6: "Demolition paragon raises breach vulnerability",
+                7: "Breach stacks strip shields faster",
+                8: "Exposed armor takes more burst damage",
+                9: "Breach duration improves against tanks and bosses",
+                10: "Exposed core mastery spikes damage on cracked targets",
+            },
+            "upgrade_effects": {
+                3: "Breach expose +1.8s",
+                4: "Shield strip +1",
+                5: "Vulnerability +15%",
+                6: "Breach cap +1",
+                7: "Shield strip chance +20%",
+                8: "Vulnerability +4%",
+                9: "Breach duration +0.4s",
+                10: "Cracked burst +12%",
+            },
+        },
+        "terraformer": {
+            "signature": "crater_zone_control",
+            "primary_mechanic": "crater zone",
+            "late_descriptions": {
+                6: "Terraformer paragon leaves larger molten crater zones",
+                7: "Crater slows last longer on ground enemies",
+                8: "Molten zones burn clustered enemies harder",
+                9: "Repeated crater hits stack stronger terrain denial",
+                10: "Kill-zone mastery widens persistent ground control",
+            },
+            "upgrade_effects": {
+                3: "Crater slow +1.0s",
+                4: "Crater burn unlocks",
+                5: "Crater radius +16",
+                6: "Crater radius +20",
+                7: "Ground slow +0.4s",
+                8: "Molten burn +10%",
+                9: "Zone uptime +12%",
+                10: "Kill-zone radius +18",
+            },
+        },
+    },
+    "frost": {
+        "glacier": {
+            "signature": "glacier_lockdown",
+            "primary_mechanic": "lockdown freeze",
+            "late_descriptions": {
+                6: "Glacier paragon improves slow strength and freeze uptime",
+                7: "Priority enemies stay frozen longer",
+                8: "Slow fields cover more nearby targets",
+                9: "Control uptime improves against bosses and fast waves",
+                10: "Deep freeze mastery keeps dangerous pushes locked down",
+            },
+            "upgrade_effects": {
+                3: "Slow strength +10%",
+                4: "Freeze window +0.25s",
+                5: "Lockdown uptime +15%",
+                6: "Freeze +0.25s",
+                7: "Priority freeze +0.15s",
+                8: "Slow radius +18",
+                9: "Boss control +10%",
+                10: "Lockdown uptime +12%",
+            },
+        },
+        "shatter": {
+            "signature": "frozen_shatter_burst",
+            "primary_mechanic": "shatter burst",
+            "late_descriptions": {
+                6: "Shatter paragon converts frozen targets into stronger bursts",
+                7: "Frozen hits deal more bonus damage",
+                8: "Fractured enemies splash damage on death more often",
+                9: "Crystal detonation radius improves",
+                10: "Shatter mastery detonates frozen packs harder",
+            },
+            "upgrade_effects": {
+                3: "Frozen burst +18%",
+                4: "Death splash unlocks",
+                5: "Detonation radius +18",
+                6: "Shatter damage +20%",
+                7: "Frozen bonus +8%",
+                8: "Death splash +1 target",
+                9: "Detonation radius +12",
+                10: "Pack burst +15%",
+            },
+        },
+        "time_control": {
+            "signature": "rewind_stasis",
+            "primary_mechanic": "rewind stasis",
+            "late_descriptions": {
+                6: "Time paragon rewinds dangerous ground enemies farther",
+                7: "Stasis pulses last longer on slowed enemies",
+                8: "Rewind effects trigger on more priority targets",
+                9: "Slow-motion fields improve wave control uptime",
+                10: "Rewind engine mastery pushes back dangerous leaks",
+            },
+            "upgrade_effects": {
+                3: "Stasis +0.18s",
+                4: "Rewind nudge +8%",
+                5: "Priority rewind unlocks",
+                6: "Rewind nudge +5%",
+                7: "Stasis +0.08s",
+                8: "Priority targets +1",
+                9: "Slow-motion +0.3s",
+                10: "Leak rewind +8%",
+            },
+        },
+    },
+    "tesla": {
+        "chain_lightning": {
+            "signature": "chain_web",
+            "primary_mechanic": "chain web",
+            "late_descriptions": {
+                6: "Chain paragon increases lightning jump range",
+                7: "Chain web jumps to one more clustered target",
+                8: "Storm pulses hit flying enemies harder",
+                9: "Lightning retains more damage after each jump",
+                10: "Thunder web mastery covers wider packed waves",
+            },
+            "upgrade_effects": {
+                3: "Chain targets +1",
+                4: "Chain targets +2",
+                5: "Chain damage +25%",
+                6: "Jump range +20",
+                7: "Chain targets +1",
+                8: "Anti-air damage +10%",
+                9: "Chain damage +8%",
+                10: "Web radius +18",
+            },
+        },
+        "battery_grid": {
+            "signature": "charge_overclock_pulse",
+            "primary_mechanic": "charge pulse",
+            "late_descriptions": {
+                6: "Battery paragon sends stronger overclock pulses",
+                7: "Charge pulses happen more often",
+                8: "Linked towers gain more fire-rate overclock",
+                9: "Charge relay also adds damage to nearby defenses",
+                10: "Power network mastery keeps clustered towers overclocked",
+            },
+            "upgrade_effects": {
+                3: "Pulse rate +15%",
+                4: "Overclock uptime +0.6s",
+                5: "Network radius +20",
+                6: "Pulse strength +12%",
+                7: "Pulse interval -0.3s",
+                8: "Rate overclock +4%",
+                9: "Damage overclock +4%",
+                10: "Network uptime +1.0s",
+            },
+        },
+        "magnet_tech": {
+            "signature": "gravity_emp",
+            "primary_mechanic": "gravity EMP",
+            "late_descriptions": {
+                6: "Magnet paragon strengthens pull and EMP disruption",
+                7: "Gravity pulses cluster more enemies",
+                8: "EMP strips shields and haste effects more reliably",
+                9: "Pulled enemies remain slowed longer",
+                10: "Gravity storm mastery sets up splash kill zones",
+            },
+            "upgrade_effects": {
+                3: "Pull radius +70",
+                4: "EMP strip +1 shield",
+                5: "Gravity targets +2",
+                6: "Pull strength +20%",
+                7: "Pull targets +1",
+                8: "EMP duration +0.4s",
+                9: "Gravity slow +0.3s",
+                10: "Storm radius +18",
+            },
+        },
+    },
+    "poison": {
+        "venom_cask": {
+            "signature": "long_toxin_stack",
+            "primary_mechanic": "long toxin",
+            "late_descriptions": {
+                6: "Venom paragon extends toxin duration and boss ramp",
+                7: "Long toxin suppresses regeneration harder",
+                8: "Stacked venom deals more damage to high-health enemies",
+                9: "Boss toxins last longer through long fights",
+                10: "Manticore mastery melts priority targets with stacked venom",
+            },
+            "upgrade_effects": {
+                3: "Poison duration +0.7s",
+                4: "Anti-regen +25%",
+                5: "Boss toxin +18%",
+                6: "Poison duration +0.8s",
+                7: "Regen cut +10%",
+                8: "High-HP damage +8%",
+                9: "Boss duration +0.5s",
+                10: "Stacked toxin +12%",
+            },
+        },
+        "wildfire": {
+            "signature": "volatile_toxin_bloom",
+            "primary_mechanic": "volatile bloom",
+            "late_descriptions": {
+                6: "Wildfire paragon makes poisoned targets ignite in bursts",
+                7: "Volatile burns tick harder on clustered enemies",
+                8: "Scorch blooms reach more nearby targets",
+                9: "Burning clouds last longer after poison hits",
+                10: "Wildfire mastery detonates infected packs harder",
+            },
+            "upgrade_effects": {
+                3: "Ignition burn +1.4s",
+                4: "Bloom radius +18",
+                5: "Bloom targets +2",
+                6: "Ignition damage +18%",
+                7: "Burn DPS +8%",
+                8: "Bloom targets +1",
+                9: "Cloud duration +0.4s",
+                10: "Detonation damage +12%",
+            },
+        },
+        "plague_mist": {
+            "signature": "contagion_mist",
+            "primary_mechanic": "contagion",
+            "late_descriptions": {
+                6: "Plague paragon spreads contagion to more nearby enemies",
+                7: "Contagion weakens infected targets longer",
+                8: "Spore nets apply stronger control in poison clouds",
+                9: "Mist coverage improves against dense waves",
+                10: "Contagion mastery keeps whole packs weakened",
+            },
+            "upgrade_effects": {
+                3: "Contagion spread +1",
+                4: "Weakening +8%",
+                5: "Mist duration +0.5s",
+                6: "Spread targets +1",
+                7: "Weakening +3%",
+                8: "Spore slow +6%",
+                9: "Mist radius +16",
+                10: "Pack duration +0.6s",
+            },
+        },
+    },
+    "barracks": {
+        "champions": {
+            "signature": "duel_hold",
+            "primary_mechanic": "duel hold",
+            "late_descriptions": {
+                6: "Champion paragon improves melee lockdown and duel damage",
+                7: "Held elites and bosses take more champion damage",
+                8: "Duel holds last longer on priority enemies",
+                9: "Champion zones expose held targets more reliably",
+                10: "Elite garrison mastery anchors a stronger kill zone",
+            },
+            "upgrade_effects": {
+                3: "Hold strength +8%",
+                4: "Elite duel +20%",
+                5: "Melee damage +25%",
+                6: "Hold duration +0.4s",
+                7: "Elite damage +10%",
+                8: "Priority hold +0.3s",
+                9: "Expose +4%",
+                10: "Kill-zone damage +12%",
+            },
+        },
+        "engineers": {
+            "signature": "barricade_minefield",
+            "primary_mechanic": "barricade traps",
+            "late_descriptions": {
+                6: "Engineer paragon improves minefield damage and trap uptime",
+                7: "Spike strips hit held enemies harder",
+                8: "Barricades slow ground lanes longer",
+                9: "Mine bursts cover more enemies in the hold zone",
+                10: "Minefield mastery turns holds into burst kill zones",
+            },
+            "upgrade_effects": {
+                3: "Trap slow +0.3s",
+                4: "Mine damage +18%",
+                5: "Mine radius +18",
+                6: "Mine damage +15%",
+                7: "Held damage +8%",
+                8: "Barricade slow +0.3s",
+                9: "Mine targets +1",
+                10: "Burst damage +12%",
+            },
+        },
+        "mercenary_guild": {
+            "signature": "contract_bounty",
+            "primary_mechanic": "contracts",
+            "late_descriptions": {
+                6: "Mercenary paragon increases bounty consistency",
+                7: "Contracts pay more from held kills",
+                8: "Danger pay scales during hard waves",
+                9: "Boss and elite contracts grant stronger rewards",
+                10: "Guild mastery converts kill zones into reliable economy",
+            },
+            "upgrade_effects": {
+                3: "Bounty chance +1",
+                4: "Contract payout +1",
+                5: "Danger pay unlocks",
+                6: "Bounty cap +2",
+                7: "Held payout +1",
+                8: "Hard-wave pay +1",
+                9: "Boss contract +2",
+                10: "Economy uptime +15%",
+            },
+        },
+    },
+    "support": {
+        "war_banner": {
+            "signature": "steady_war_aura",
+            "primary_mechanic": "war aura",
+            "late_descriptions": {
+                6: "War Banner paragon strengthens direct cluster buffs",
+                7: "Aura buffs last longer on nearby towers",
+                8: "Damage and fire-rate buffs improve together",
+                9: "Command range support reaches more clustered towers",
+                10: "Battle standard mastery keeps dense defenses empowered",
+            },
+            "upgrade_effects": {
+                3: "Aura damage +4%",
+                4: "Aura range +0.8s",
+                5: "Aura strength +6%",
+                6: "Buff strength +10%",
+                7: "Buff duration +0.6s",
+                8: "Damage/rate +3%",
+                9: "Range buff +5%",
+                10: "Aura uptime +1.0s",
+            },
+        },
+        "research_lab": {
+            "signature": "prototype_research",
+            "primary_mechanic": "prototype tech",
+            "late_descriptions": {
+                6: "Tech Lab paragon improves research and prototype tempo",
+                7: "Assists generate tech more consistently",
+                8: "Prototype buffs reduce nearby upgrade pressure",
+                9: "Research casts recover mana faster",
+                10: "Adaptive institute mastery accelerates late upgrades",
+            },
+            "upgrade_effects": {
+                3: "Tech every 3 casts",
+                4: "Prototype discount +5%",
+                5: "Research tempo +12%",
+                6: "Tech chance +20%",
+                7: "Assist tech +1",
+                8: "Prototype buff +6%",
+                9: "Mana recovery +3/s",
+                10: "Late tech +1",
+            },
+        },
+        "signal_tower": {
+            "signature": "tactical_scan_grid",
+            "primary_mechanic": "tactical scan",
+            "late_descriptions": {
+                6: "Signal paragon scans more priority enemies per cast",
+                7: "Threat scans last longer on dangerous targets",
+                8: "Tactical grid improves shared targeting damage",
+                9: "Scans slow priority enemies more reliably",
+                10: "Signal mastery keeps the battlefield painted",
+            },
+            "upgrade_effects": {
+                3: "Scan mark +2.8s",
+                4: "Shared targeting +8%",
+                5: "Grid targets +1",
+                6: "Scan targets +1",
+                7: "Scan duration +0.5s",
+                8: "Marked damage +4%",
+                9: "Priority slow +5%",
+                10: "Grid uptime +0.8s",
             },
         },
     },
@@ -894,6 +1417,10 @@ REQUIRED_BRANCH_KEYS = (
     "color",
     "tiers",
     "descriptions",
+    "signature",
+    "primary_mechanic",
+    "late_descriptions",
+    "upgrade_effects",
     "focus",
     "keystone",
     "synergy",
@@ -934,7 +1461,7 @@ MECHANIC_KEYSTONES = (
     (("mine", "barricade"), "Engineers seed the lane with traps"),
     (("bounty", "contract"), "Contracts convert held kills into money"),
     (("aura", "damage_buff", "rate_buff"), "Aura buffs reward tight tower clusters"),
-    (("research", "prototype"), "Assists convert into research tempo"),
+    (("research", "prototype"), "Assists convert into tech tempo"),
     (("threat_scan",), "Scans steer damage into priority targets"),
 )
 
@@ -960,7 +1487,7 @@ TAG_SYNERGIES = {
     "mine": "Pairs with Garrison holds and slow lanes",
     "economy": "Pairs with safe early defenses and long waves",
     "aura": "Pairs with dense tower clusters",
-    "research": "Pairs with expensive late mastery upgrades",
+    "research": "Tech helps expensive late mastery upgrades",
 }
 
 
@@ -1032,6 +1559,8 @@ def tower_tier_description(tower_type, level, branch_key=None):
     branch = branch_data(tower_type, branch_key)
     if branch and level in branch["descriptions"]:
         return branch["descriptions"][level]
+    if branch and level in branch["late_descriptions"]:
+        return branch["late_descriptions"][level]
     root_type, _ = normalize_tower_type(tower_type)
     return TOWER_TYPES[root_type]["descriptions"].get(level, TOWER_TYPES[root_type]["role"])
 
@@ -1041,7 +1570,34 @@ def _apply_family_metadata():
         family, theme = FAMILY_INFO[tower_type]
         branches = BRANCH_DEFINITIONS[tower_type]
         tower = TOWER_TYPES[tower_type]
-        for branch in branches.values():
+        for branch_key, branch in branches.items():
+            identity = BRANCH_IDENTITY.get(tower_type, {}).get(branch_key, {})
+            branch.update(identity)
+            branch.setdefault("signature", f"{tower_type}_{branch_key}")
+            branch.setdefault("primary_mechanic", branch["mechanics"][0])
+            branch.setdefault(
+                "late_descriptions",
+                {
+                    6: f"{branch['name']} paragon strengthens its signature mechanic",
+                    7: f"{branch['name']} mastery improves uptime",
+                    8: f"{branch['name']} mastery improves coverage",
+                    9: f"{branch['name']} mastery improves consistency",
+                    10: f"{branch['name']} mastery reaches maximum scaling",
+                },
+            )
+            branch.setdefault(
+                "upgrade_effects",
+                {
+                    3: branch["descriptions"][3],
+                    4: branch["descriptions"][4],
+                    5: branch["descriptions"][5],
+                    6: branch["late_descriptions"][6],
+                    7: branch["late_descriptions"][7],
+                    8: branch["late_descriptions"][8],
+                    9: branch["late_descriptions"][9],
+                    10: branch["late_descriptions"][10],
+                },
+            )
             branch["focus"] = branch_focus(branch)
             branch["keystone"] = branch_keystone(branch)
             branch["synergy"] = branch_synergy(branch)
@@ -1096,6 +1652,28 @@ def validate_tower_family_data():
                     errors.append(f"{tower_type}.{branch_key} missing tier name for level {level}")
                 if level not in branch.get("descriptions", {}):
                     errors.append(f"{tower_type}.{branch_key} missing description for level {level}")
+            for level in range(6, 11):
+                if level not in branch.get("late_descriptions", {}):
+                    errors.append(f"{tower_type}.{branch_key} missing late description for level {level}")
+                if level not in branch.get("upgrade_effects", {}):
+                    errors.append(f"{tower_type}.{branch_key} missing upgrade effect for level {level}")
+
+    visible_signatures = []
+    visible_primary_mechanics = []
+    for tower_type in SHOP_TOWER_ORDER:
+        for branch_key, branch in BRANCH_DEFINITIONS[tower_type].items():
+            visible_signatures.append((branch["signature"], tower_type, branch_key))
+            visible_primary_mechanics.append((branch["primary_mechanic"], tower_type, branch_key))
+
+    for label, values in (("signature", visible_signatures), ("primary mechanic", visible_primary_mechanics)):
+        seen = {}
+        for value, tower_type, branch_key in values:
+            if value in seen:
+                other_tower, other_branch = seen[value]
+                errors.append(
+                    f"Visible branch {tower_type}.{branch_key} duplicates {label} with {other_tower}.{other_branch}: {value}"
+                )
+            seen[value] = (tower_type, branch_key)
 
     for legacy_id, (root_type, branch_key) in LEGACY_TOWER_ALIASES.items():
         if root_type not in ROOT_TOWER_IDS:

@@ -38,10 +38,11 @@ class ParticleManager:
         self.max_particles = max_particles
         self.particles = []
 
-    def emit(self, x, y, color, count=6, speed=70, size=4, lifetime=0.45):
+    def emit(self, x, y, color, count=6, speed=70, size=4, lifetime=0.45, alpha=1.0):
         if self.max_particles <= 0:
             return
 
+        alpha = max(0.0, min(1.0, alpha))
         for _ in range(count):
             if len(self.particles) >= self.max_particles:
                 self.particles.pop(0)
@@ -54,7 +55,7 @@ class ParticleManager:
                     vx=math.cos(angle) * velocity,
                     vy=math.sin(angle) * velocity,
                     color=color,
-                    alpha=1.0,
+                    alpha=alpha,
                     size=random.uniform(size * 0.55, size * 1.2),
                     lifetime=random.uniform(lifetime * 0.65, lifetime * 1.2),
                 )

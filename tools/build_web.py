@@ -31,6 +31,7 @@ def copy_tree(source, destination, *extra_ignores):
         source,
         destination,
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", ".pytest_cache", *extra_ignores),
+        dirs_exist_ok=True,
     )
 
 
@@ -58,10 +59,28 @@ def build_with_pygbag(stage_dir):
     return WEB_DIR
 
 
+def copy_existing_web_build():
+    pygbag_web_dir = STAGING_DIR / "build" / "web"
+    if not pygbag_web_dir.exists():
+        raise RuntimeError(f"No existing Pygbag output found: {pygbag_web_dir}")
+    if not (pygbag_web_dir / "index.html").exists():
+        raise RuntimeError(f"Existing Pygbag output is incomplete: {pygbag_web_dir / 'index.html'}")
+
+    clean_dir(WEB_DIR)
+    copy_tree(pygbag_web_dir, WEB_DIR)
+    return WEB_DIR
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Stage and build Signal Defense for web/Pygbag.")
     parser.add_argument("--build", action="store_true", help="Run Pygbag after staging.")
+    parser.add_argument("--copy-existing", action="store_true", help="Copy an already-built Pygbag web folder to build/web.")
     args = parser.parse_args(argv)
+
+    if args.copy_existing:
+        web_dir = copy_existing_web_build()
+        print(f"Copied existing web output: {web_dir}")
+        return
 
     stage_dir = stage_project()
     print(f"Staged web project: {stage_dir}")

@@ -1041,6 +1041,14 @@ class Enemy:
         self.marked_timer = 0
         self.barracks_hold_timer = 0
         self.commander_aura_timer = 0
+        self.suppression_stacks = 0
+        self.suppression_timer = 0
+        self.breach_stacks = 0
+        self.breach_timer = 0
+        self.echo_timer = 0
+        self.echo_damage = 0
+        self.echo_damage_type = None
+        self.echo_source_tower = None
         self.last_damaging_tower = None
         self.trail_points = []
         self.trail_sample_timer = 0
@@ -1136,6 +1144,25 @@ class Enemy:
             self.barracks_hold_timer -= dt
         if self.commander_aura_timer > 0:
             self.commander_aura_timer -= dt
+        if self.suppression_timer > 0:
+            self.suppression_timer -= dt
+            if self.suppression_timer <= 0:
+                self.suppression_stacks = 0
+        if self.breach_timer > 0:
+            self.breach_timer -= dt
+            if self.breach_timer <= 0:
+                self.breach_stacks = 0
+        if self.echo_timer > 0:
+            self.echo_timer -= dt
+            if self.echo_timer <= 0 and self.echo_damage > 0:
+                dealt = self.take_damage(self.echo_damage, self.echo_damage_type, self.echo_source_tower)
+                if self.echo_source_tower in towers:
+                    self.echo_source_tower.total_damage += dealt
+                    self.echo_source_tower.mastery_xp += dealt * 0.02
+                add_floating_text(self.x - 14, self.y - 48, f"ECHO {int(dealt)}", (190, 170, 245))
+                self.echo_damage = 0
+                self.echo_damage_type = None
+                self.echo_source_tower = None
         self.update_packet_trail(dt)
         self.update_boss_protocol(dt)
 
@@ -1697,12 +1724,14 @@ class Tower:
         elif self.tower_type == "gold":
             self.damage *= 1.7
             self.fire_rate = 0.35
+        self.apply_branch_mastery_stats()
 
     def apply_mastery_stats(self):
         self.range += 18
 
         if self.tower_type == "support":
             self.range += 35
+            self.apply_branch_mastery_stats()
             return
 
         if self.tower_type == "sniper":
@@ -1738,6 +1767,62 @@ class Tower:
         else:
             self.damage *= 1.25
             self.fire_rate = max(0.09, self.fire_rate - 0.025)
+        self.apply_branch_mastery_stats()
+
+    def apply_branch_mastery_stats(self):
+        if self.selected_branch is None or self.level < PARAGON_LEVEL:
+            return
+
+        mastery = mastery_rank(self)
+        if self.selected_branch == "vulcan":
+            self.fire_rate = max(0.018, self.fire_rate - 0.0015 * mastery)
+        elif self.selected_branch == "suppression":
+            self.range += 8 + mastery * 2
+            self.fire_rate = max(0.018, self.fire_rate - 0.001 * mastery)
+        elif self.selected_branch == "ammo_fabricator":
+            self.damage *= 1.035 + mastery * 0.004
+        elif self.selected_branch == "artillery":
+            self.range += 10 + mastery * 3
+            self.damage *= 1.025
+        elif self.selected_branch == "demolition":
+            self.damage *= 1.04 + mastery * 0.004
+        elif self.selected_branch == "terraformer":
+            self.range += 8 + mastery * 2
+            self.damage *= 1.018
+        elif self.selected_branch == "glacier":
+            self.range += 10 + mastery * 2
+        elif self.selected_branch == "shatter":
+            self.damage *= 1.045 + mastery * 0.004
+        elif self.selected_branch == "time_control":
+            self.range += 7 + mastery * 2
+            self.fire_rate = max(0.075, self.fire_rate - 0.002 * mastery)
+        elif self.selected_branch == "chain_lightning":
+            self.range += 8 + mastery * 3
+        elif self.selected_branch == "battery_grid":
+            self.range += 14 + mastery * 4
+        elif self.selected_branch == "magnet_tech":
+            self.range += 7 + mastery * 3
+            self.damage *= 1.025
+        elif self.selected_branch == "venom_cask":
+            self.damage *= 1.035 + mastery * 0.005
+        elif self.selected_branch == "wildfire":
+            self.damage *= 1.04 + mastery * 0.004
+            self.range += 5 + mastery
+        elif self.selected_branch == "plague_mist":
+            self.range += 12 + mastery * 3
+        elif self.selected_branch == "champions":
+            self.damage *= 1.04 + mastery * 0.004
+        elif self.selected_branch == "engineers":
+            self.range += 10 + mastery * 2
+        elif self.selected_branch == "mercenary_guild":
+            self.damage *= 1.025 + mastery * 0.003
+            self.range += 8 + mastery * 2
+        elif self.selected_branch == "war_banner":
+            self.range += 16 + mastery * 4
+        elif self.selected_branch == "research_lab":
+            self.range += 10 + mastery * 3
+        elif self.selected_branch == "signal_tower":
+            self.range += 12 + mastery * 4
 
     def can_attack(self, enemy):
         if self.tower_type in ("support", "barracks"):
@@ -1871,28 +1956,51 @@ class Tower:
         self.mastery_xp += 0.4
 
     def update_barracks(self, dt):
+        rank = branch_rank(self)
+        mastery = mastery_rank(self)
         for enemy in enemies:
             if enemy.flying:
                 continue
             if dist((self.x, self.y), (enemy.x, enemy.y)) <= self.effective_range():
                 self.mastery_xp += dt * 0.35
                 enemy.slow_timer = max(enemy.slow_timer, 0.3)
-                enemy.barracks_hold_timer = max(enemy.barracks_hold_timer, 0.5)
+                enemy.barracks_hold_timer = max(enemy.barracks_hold_timer, 0.5 + rank * 0.04)
                 hold_multiplier = 0.58 if self.level < 5 else 0.42
-                if self.branch_has("hold"):
-                    hold_multiplier -= 0.08
-                if self.branch_has("trap"):
-                    hold_multiplier -= 0.05
+                if self.selected_branch == "champions":
+                    hold_multiplier -= 0.08 + mastery * 0.012
+                elif self.selected_branch == "engineers":
+                    hold_multiplier -= 0.04 + rank * 0.006
+                elif self.selected_branch == "mercenary_guild":
+                    hold_multiplier -= 0.03
                 enemy.slow_multiplier = min(enemy.slow_multiplier, max(0.30, hold_multiplier))
                 if self.level >= 4:
                     enemy.vulnerable_timer = max(enemy.vulnerable_timer, 0.5)
-                    enemy.damage_multiplier = max(enemy.damage_multiplier, 1.12 if self.level < PARAGON_LEVEL else 1.25)
-                if self.branch_has("mine") and self.level >= BRANCH_UNLOCK_LEVEL:
-                    dealt = enemy.take_damage(self.effective_damage() * dt * 0.85, "explosive", self)
+                    exposed = 1.12 if self.level < PARAGON_LEVEL else 1.25
+                    if self.selected_branch == "champions":
+                        exposed += mastery * 0.02
+                    enemy.damage_multiplier = max(enemy.damage_multiplier, exposed)
+                if self.selected_branch == "engineers" and self.level >= BRANCH_UNLOCK_LEVEL:
+                    mine_scale = 0.85 + rank * 0.06 + mastery * 0.10
+                    dealt = enemy.take_damage(self.effective_damage() * dt * mine_scale, "explosive", self)
+                    self.total_damage += dealt
+                    self.mastery_xp += dealt * 0.02
+                    if self.level >= 9 and enemy.barracks_hold_timer > 0:
+                        for nearby in enemies:
+                            if nearby is enemy or nearby.flying:
+                                continue
+                            if dist((enemy.x, enemy.y), (nearby.x, nearby.y)) <= 44 + mastery * 8:
+                                splash = nearby.take_damage(self.effective_damage() * dt * 0.28, "explosive", self)
+                                self.total_damage += splash
+                if self.selected_branch == "champions" and (enemy.boss or has_behavior_tag(enemy, "armored")):
+                    duel_scale = 0.35 + rank * 0.04 + mastery * 0.08
+                    dealt = enemy.take_damage(self.effective_damage() * dt * duel_scale, "melee", self)
                     self.total_damage += dealt
                     self.mastery_xp += dealt * 0.02
                 if self.level >= 5:
-                    dealt = enemy.take_damage(self.effective_damage() * dt * 1.5, "melee", self)
+                    base_scale = 1.5
+                    if self.selected_branch == "mercenary_guild" and wave >= 20:
+                        base_scale += 0.15 + mastery * 0.04
+                    dealt = enemy.take_damage(self.effective_damage() * dt * base_scale, "melee", self)
                     self.total_damage += dealt
                     self.mastery_xp += dealt * 0.02
 
@@ -1921,12 +2029,16 @@ class Tower:
         return self.range * (1 + run_range_bonus)
 
     def support_cast_cost(self):
-        return 30.0 if self.branch_has("paint") or self.branch_has("threat_scan") else 35.0
+        if self.selected_branch == "signal_tower":
+            return 30.0
+        if self.selected_branch == "research_lab":
+            return max(24.0, 34.0 - mastery_rank(self) * 1.5)
+        return 35.0
 
     def support_mana_rate(self):
         rate = 10.0 + self.level * 2.0
-        if self.branch_has("research"):
-            rate += 3.0
+        if self.selected_branch == "research_lab":
+            rate += 3.0 + mastery_rank(self) * 1.4
         if self.is_paragon:
             rate += 5.0
         return rate
@@ -1961,15 +2073,21 @@ class Tower:
         if self.support_mana < cost:
             return False
 
+        rank = branch_rank(self)
+        mastery = mastery_rank(self)
         duration = 4.2 + self.level * 0.28
         damage_bonus = 0.08 + self.level * 0.018
         rate_bonus = 0.06 + self.level * 0.014
-        if self.branch_has("damage_buff"):
-            damage_bonus += 0.04
-        if self.branch_has("rate_buff"):
-            rate_bonus += 0.04
-        if self.branch_has("range_buff"):
-            duration += 0.8
+        range_bonus = 0.0
+        if self.selected_branch == "war_banner":
+            damage_bonus += 0.04 + mastery * 0.008
+            rate_bonus += 0.04 + mastery * 0.006
+            range_bonus = 0.06 + rank * 0.006 + mastery * 0.008
+            duration += 0.8 + mastery * 0.25
+        elif self.selected_branch == "research_lab":
+            damage_bonus += 0.015 + mastery * 0.004
+            rate_bonus += 0.015 + mastery * 0.004
+            duration += 0.35
         if self.is_paragon:
             duration += 1.4
             damage_bonus += 0.06
@@ -1978,6 +2096,7 @@ class Tower:
         target.support_buff_timer = max(target.support_buff_timer, duration)
         target.support_damage_bonus = max(target.support_damage_bonus, min(0.30, damage_bonus))
         target.support_rate_bonus = max(target.support_rate_bonus, min(0.24, rate_bonus))
+        target.support_range_bonus = max(target.support_range_bonus, min(0.16, range_bonus))
         self.finish_support_cast(cost, 1.35)
         add_effect(SparkEffect(target.x, target.y, TOWER_TYPES["support"]["projectile_color"], 18, 0.28, "coin_sparkle"))
         add_floating_text(target.x - 16, target.y - 44, "BUFF", TOWER_TYPES["support"]["projectile_color"])
@@ -1989,13 +2108,34 @@ class Tower:
         if self.support_mana < cost:
             return False
 
+        rank = branch_rank(self)
+        mastery = mastery_rank(self)
         duration = 2.8 + self.level * 0.22
-        enemy.marked_timer = max(enemy.marked_timer, duration)
-        enemy.vulnerable_timer = max(enemy.vulnerable_timer, duration * 0.85)
-        enemy.damage_multiplier = max(enemy.damage_multiplier, 1.08 + min(0.12, self.level * 0.012))
-        if self.branch_has("paint") or self.branch_has("threat_scan") or self.level >= 4:
-            enemy.slow_timer = max(enemy.slow_timer, duration * 0.6)
-            enemy.slow_multiplier = min(enemy.slow_multiplier, 0.78 if self.level < PARAGON_LEVEL else 0.68)
+        targets = [enemy]
+        if self.selected_branch == "signal_tower":
+            scan_count = 1 + (1 if self.level >= 5 else 0) + (1 if self.level >= PARAGON_LEVEL else 0) + (1 if self.level >= 10 else 0)
+            support_range = self.support_cast_range()
+            candidates = [
+                target for target in enemies
+                if target is not enemy
+                and (self.is_paragon or dist((self.x, self.y), (target.x, target.y)) <= support_range)
+            ]
+            candidates.sort(key=lambda target: (target.marked_timer, -target.progress(), -target.max_hp))
+            targets.extend(candidates[: max(0, scan_count - 1)])
+
+        for index, target in enumerate(targets):
+            scan_duration = duration + (mastery * 0.18 if self.selected_branch == "signal_tower" else 0)
+            target.marked_timer = max(target.marked_timer, scan_duration)
+            target.vulnerable_timer = max(target.vulnerable_timer, scan_duration * 0.85)
+            vulnerability = 1.08 + min(0.12, self.level * 0.012)
+            if self.selected_branch == "signal_tower":
+                vulnerability += 0.02 + mastery * 0.008
+            target.damage_multiplier = max(target.damage_multiplier, vulnerability)
+            if self.selected_branch == "signal_tower" or self.level >= 4:
+                target.slow_timer = max(target.slow_timer, scan_duration * 0.6)
+                target.slow_multiplier = min(target.slow_multiplier, 0.78 if self.level < PARAGON_LEVEL else 0.68 - mastery * 0.01)
+            if index > 0:
+                add_floating_text(target.x - 18, target.y - 44, "GRID", (180, 215, 245))
 
         self.finish_support_cast(cost, 1.15)
         add_effect(SparkEffect(enemy.x, enemy.y, (180, 215, 245), enemy.radius + 10, 0.24, "lightning_spark"))
@@ -2010,7 +2150,8 @@ class Tower:
         self.support_cast_cooldown = cooldown
         self.support_casts += 1
         self.mastery_xp += 0.6
-        if self.branch_has("research") and self.support_casts % 3 == 0:
+        research_interval = 2 if self.selected_branch == "research_lab" and self.level >= 8 else 3
+        if self.selected_branch == "research_lab" and self.support_casts % research_interval == 0:
             research_points += 1
             add_floating_text(self.x - 20, self.y - 44, "+1 Tech", (150, 220, 255))
 
@@ -2052,6 +2193,8 @@ class Tower:
                 bonus = max(bonus, self.support_damage_bonus)
             elif bonus_type == "rate":
                 bonus = max(bonus, self.support_rate_bonus)
+            elif bonus_type == "range":
+                bonus = max(bonus, self.support_range_bonus)
         for tower in towers:
             if tower == self or not tower.has_mutation("field_medic"):
                 continue
@@ -2060,21 +2203,16 @@ class Tower:
                     bonus = max(bonus, 0.07)
                 elif bonus_type == "rate":
                     bonus = max(bonus, 0.06)
-        for tower in towers:
-            if tower == self or not tower.branch_has("overclock"):
-                continue
-            if tower.is_paragon or dist((self.x, self.y), (tower.x, tower.y)) <= tower.effective_range():
-                if bonus_type == "rate":
-                    bonus = max(bonus, 0.10 if self.tower_type == "machine_gun" else 0.06)
-                elif bonus_type == "damage" and tower.level >= 4:
-                    bonus = max(bonus, 0.06)
         return bonus
 
     def effective_damage(self):
         return self.damage * (1 + tower_damage_bonus_level * 0.05 + run_damage_bonus + self.support_bonus("damage"))
 
     def effective_fire_rate(self):
-        return max(0.025, self.fire_rate * (1 - self.support_bonus("rate")))
+        rate_bonus = self.support_bonus("rate")
+        if self.selected_branch == "vulcan":
+            rate_bonus += min(0.32, self.spin_heat * (0.12 + branch_rank(self) * 0.018))
+        return max(0.025, self.fire_rate * (1 - rate_bonus))
 
     def effective_range(self):
         return self.range * (1 + run_range_bonus + self.support_bonus("range"))
@@ -2644,22 +2782,31 @@ class Projectile:
             if self.tower_level < 3:
                 return
 
-            chain_count = 1
-            chain_damage = self.damage * 0.5
-            chain_range = 90
+            is_chain_web = self.source_tower.selected_branch == "chain_lightning"
+            mastery = mastery_rank(self.source_tower)
+            if is_chain_web:
+                chain_count = 1
+                chain_damage = self.damage * 0.5
+                chain_range = 90
 
-            if self.tower_level >= 4:
-                chain_count = 3
-                chain_range = 105
-            if self.tower_level >= 5:
-                chain_damage = self.damage * 0.75
-                chain_range = 120
-            if self.tower_level >= PARAGON_LEVEL:
-                chain_count = 3
-                chain_damage = self.damage * 0.45
-                chain_range = 125
+                if self.tower_level >= 4:
+                    chain_count = 3
+                    chain_range = 105
+                if self.tower_level >= 5:
+                    chain_damage = self.damage * 0.75
+                    chain_range = 120
+                if self.tower_level >= PARAGON_LEVEL:
+                    chain_count = 3 + (1 if self.tower_level >= 7 else 0) + (1 if self.tower_level >= 10 else 0)
+                    chain_damage = self.damage * (0.45 + mastery * 0.025)
+                    chain_range = 125 + mastery * 8
+            else:
+                chain_count = 1 if self.tower_level >= 5 else 0
+                chain_damage = self.damage * 0.28
+                chain_range = 76
+            if chain_count <= 0:
+                return
             if (self.target.slow_timer > 0 or self.target.freeze_timer > 0) and has_tower_type("frost"):
-                chain_count = min(4, chain_count + 1)
+                chain_count = min(6 if is_chain_web else 4, chain_count + 1)
                 add_floating_text(self.target.x - 20, self.target.y - 50, "OVERCHARGE", (180, 220, 255))
 
             chain_targets = [
@@ -2681,8 +2828,217 @@ class Projectile:
         if branch is None:
             return
 
+        branch_key = self.source_tower.selected_branch
+        rank = branch_rank(self.source_tower)
+        mastery = mastery_rank(self.source_tower)
         mechanics = set(branch["mechanics"])
         tower_level = self.source_tower.level
+
+        if branch_key == "vulcan":
+            if self.source_tower.spin_heat >= 0.72:
+                bonus = self.damage * (0.08 + mastery * 0.025)
+                dealt = self.target.take_damage(bonus, self.get_damage_type(), self.source_tower)
+                self.source_tower.total_damage += dealt
+                self.source_tower.mastery_xp += dealt * 0.02
+                add_floating_text(self.target.x + 8, self.target.y - 34, "HEAT", branch["color"])
+                if tower_level >= 8:
+                    for enemy in self.nearby_enemies(self.target, 44 + mastery * 6, 2):
+                        dealt = enemy.take_damage(self.damage * (0.08 + mastery * 0.012), "physical", self.source_tower)
+                        self.source_tower.total_damage += dealt
+            return
+
+        if branch_key == "suppression":
+            cap = 3 + (1 if tower_level >= PARAGON_LEVEL else 0) + (1 if tower_level >= 10 else 0)
+            self.target.suppression_stacks = min(cap, self.target.suppression_stacks + 1)
+            self.target.suppression_timer = max(self.target.suppression_timer, 0.75 + mastery * 0.12)
+            slow = max(0.38, 0.84 - self.target.suppression_stacks * 0.055 - mastery * 0.015)
+            self.apply_slow(self.target, slow, 0.55 + self.target.suppression_stacks * 0.12 + mastery * 0.08)
+            add_floating_text(self.target.x - 12, self.target.y - 38, "PIN", branch["color"])
+            if self.target.suppression_stacks >= cap and (has_behavior_tag(self.target, "fast") or tower_level >= 8):
+                self.target.freeze_timer = max(self.target.freeze_timer, 0.08 + mastery * 0.025)
+                add_floating_text(self.target.x - 18, self.target.y - 52, "PANIC", branch["color"])
+            return
+
+        if branch_key == "ammo_fabricator":
+            tags = self.target.behavior_tags()
+            if "armored" in tags:
+                self.target.shield_hits = max(0, self.target.shield_hits - 1 - (1 if tower_level >= 7 else 0))
+                self.target.vulnerable_timer = max(self.target.vulnerable_timer, 1.1 + mastery * 0.2)
+                self.target.damage_multiplier = max(self.target.damage_multiplier, 1.10 + mastery * 0.015)
+                add_floating_text(self.target.x - 10, self.target.y - 44, "AP", branch["color"])
+            elif "swarm" in tags:
+                for enemy in self.nearby_enemies(self.target, 48 + mastery * 5, 2 + (1 if tower_level >= 8 else 0)):
+                    if has_behavior_tag(enemy, "swarm"):
+                        dealt = enemy.take_damage(self.damage * (0.22 + mastery * 0.025), "physical", self.source_tower)
+                        self.source_tower.total_damage += dealt
+                        add_floating_text(enemy.x - 16, enemy.y - 34, "FRAG", branch["color"])
+            else:
+                self.target.marked_timer = max(self.target.marked_timer, 0.8 + mastery * 0.15)
+                add_floating_text(self.target.x - 18, self.target.y - 44, "TRACER", branch["color"])
+            return
+
+        if branch_key == "artillery":
+            cluster_radius = 42 + rank * 7 + mastery * 8
+            cluster_damage = self.damage * (0.10 + mastery * 0.025)
+            cluster_limit = 2 + (1 if tower_level >= 8 else 0) + (1 if tower_level >= 10 else 0)
+            for enemy in self.nearby_enemies(self.target, cluster_radius, cluster_limit):
+                dealt = enemy.take_damage(cluster_damage, "explosive", self.source_tower)
+                self.source_tower.total_damage += dealt
+                add_floating_text(enemy.x - 18, enemy.y - 40, "CLUSTER", branch["color"])
+            return
+
+        if branch_key == "demolition":
+            cap = 2 + (1 if tower_level >= 7 else 0) + (1 if tower_level >= 10 else 0)
+            self.target.breach_stacks = min(cap, self.target.breach_stacks + 1)
+            self.target.breach_timer = max(self.target.breach_timer, 1.5 + mastery * 0.25)
+            if self.target.shield_hits > 0:
+                self.target.shield_hits = max(0, self.target.shield_hits - 1)
+                self.source_tower.shield_breaks += 1
+            self.target.vulnerable_timer = max(self.target.vulnerable_timer, 1.6 + mastery * 0.2)
+            self.target.damage_multiplier = max(
+                self.target.damage_multiplier,
+                1.08 + self.target.breach_stacks * 0.04 + mastery * 0.01,
+            )
+            add_floating_text(self.target.x - 18, self.target.y - 48, "BREACH", branch["color"])
+            return
+
+        if branch_key == "terraformer":
+            crater_radius = 44 + rank * 6 + mastery * 7
+            crater_timer = 0.85 + rank * 0.10 + mastery * 0.12
+            for enemy in [self.target] + self.nearby_enemies(self.target, crater_radius, 3 + mastery // 2):
+                if enemy.flying:
+                    continue
+                self.apply_slow(enemy, max(0.44, 0.78 - mastery * 0.025), crater_timer)
+                if tower_level >= 4:
+                    self.apply_burn(enemy, self.damage * (0.07 + rank * 0.008 + mastery * 0.012), crater_timer)
+                add_floating_text(enemy.x - 18, enemy.y - 38, "CRATER", branch["color"])
+            return
+
+        if branch_key == "glacier":
+            self.apply_slow(self.target, max(0.34, 0.58 - mastery * 0.025), 1.8 + rank * 0.18 + mastery * 0.20)
+            self.target.freeze_timer = max(self.target.freeze_timer, 0.20 + mastery * 0.08 + (0.10 if tower_level >= 7 else 0))
+            if tower_level >= 8:
+                for enemy in self.nearby_enemies(self.target, 54 + mastery * 6, 2):
+                    self.apply_slow(enemy, 0.62 - mastery * 0.02, 1.0 + mastery * 0.15)
+            add_floating_text(self.target.x - 16, self.target.y - 50, "LOCK", branch["color"])
+            return
+
+        if branch_key == "shatter":
+            frozen = self.target.freeze_timer > 0
+            if frozen:
+                bonus = self.damage * (0.20 + rank * 0.025 + mastery * 0.05)
+                dealt = self.target.take_damage(bonus, "frost", self.source_tower)
+                self.source_tower.total_damage += dealt
+                burst_radius = 40 + mastery * 7
+                for enemy in self.nearby_enemies(self.target, burst_radius, 2 + (1 if tower_level >= 8 else 0)):
+                    dealt = enemy.take_damage(bonus * 0.40, "frost", self.source_tower)
+                    self.source_tower.total_damage += dealt
+                add_floating_text(self.target.x - 22, self.target.y - 52, "SHATTER", branch["color"])
+            return
+
+        if branch_key == "time_control":
+            stasis_time = 0.10 + rank * 0.025 + mastery * 0.035
+            self.target.freeze_timer = max(self.target.freeze_timer, stasis_time)
+            if not self.target.flying and self.target.target_index > 0:
+                previous = self.target.path[max(0, self.target.target_index - 1)]
+                rewind = min(0.24, 0.08 + mastery * 0.025)
+                self.target.x += (previous[0] - self.target.x) * rewind
+                self.target.y += (previous[1] - self.target.y) * rewind
+            add_floating_text(self.target.x - 20, self.target.y - 52, "REWIND", branch["color"])
+            return
+
+        if branch_key == "chain_lightning":
+            if self.target.flying and tower_level >= 8:
+                dealt = self.target.take_damage(self.damage * (0.08 + mastery * 0.02), "electric", self.source_tower)
+                self.source_tower.total_damage += dealt
+                add_floating_text(self.target.x - 16, self.target.y - 48, "STORM", branch["color"])
+            return
+
+        if branch_key == "battery_grid":
+            self.source_tower.overclock_pulse_timer = min(self.source_tower.overclock_pulse_timer, 0.35)
+            add_floating_text(self.target.x - 18, self.target.y - 44, "CHARGE", branch["color"])
+            return
+
+        if branch_key == "magnet_tech":
+            pull_radius = 72 + rank * 5 + mastery * 8
+            pull_strength = 0.08 + mastery * 0.018
+            for enemy in self.nearby_enemies(self.target, pull_radius, 3 + (1 if tower_level >= 7 else 0)):
+                enemy.x += (self.target.x - enemy.x) * pull_strength
+                enemy.y += (self.target.y - enemy.y) * pull_strength
+                enemy.slow_timer = max(enemy.slow_timer, 0.45 + mastery * 0.10)
+                enemy.slow_multiplier = min(enemy.slow_multiplier, 0.72 - mastery * 0.015)
+                if enemy.shield_hits > 0:
+                    enemy.shield_hits = max(0, enemy.shield_hits - 1)
+            if self.target.shield_hits > 0:
+                self.target.shield_hits = max(0, self.target.shield_hits - 1)
+            add_floating_text(self.target.x - 12, self.target.y - 52, "PULL", branch["color"])
+            return
+
+        if branch_key == "venom_cask":
+            poison_dps = self.damage * (0.10 + rank * 0.018 + mastery * 0.025)
+            poison_timer = 2.5 + rank * 0.28 + mastery * 0.35
+            self.apply_poison(self.target, poison_dps, poison_timer)
+            if self.target.regen_rate > 0:
+                self.target.regen_rate *= max(0.45, 0.75 - mastery * 0.04)
+            if self.target.boss or self.target.hp >= self.target.max_hp * 0.60:
+                self.target.vulnerable_timer = max(self.target.vulnerable_timer, 1.0 + mastery * 0.2)
+                self.target.damage_multiplier = max(self.target.damage_multiplier, 1.06 + mastery * 0.015)
+            add_floating_text(self.target.x - 18, self.target.y - 40, "TOXIN", branch["color"])
+            return
+
+        if branch_key == "wildfire":
+            burn_timer = 1.4 + rank * 0.16 + mastery * 0.22
+            burn_dps = self.damage * (0.11 + rank * 0.012 + mastery * 0.018)
+            self.apply_burn(self.target, burn_dps, burn_timer)
+            bloom_radius = 38 + rank * 5 + mastery * 7
+            for enemy in self.nearby_enemies(self.target, bloom_radius, 2 + (1 if tower_level >= 8 else 0)):
+                self.apply_burn(enemy, burn_dps * 0.55, burn_timer * 0.75)
+                dealt = enemy.take_damage(self.damage * (0.08 + mastery * 0.018), "fire", self.source_tower)
+                self.source_tower.total_damage += dealt
+                add_floating_text(enemy.x - 18, enemy.y - 40, "BLOOM", branch["color"])
+            add_floating_text(self.target.x - 16, self.target.y - 40, "IGNITE", branch["color"])
+            return
+
+        if branch_key == "plague_mist":
+            mist_radius = 46 + rank * 6 + mastery * 8
+            poison_dps = self.damage * (0.06 + rank * 0.010 + mastery * 0.014)
+            poison_timer = 1.8 + rank * 0.20 + mastery * 0.30
+            spread_targets = [self.target] + self.nearby_enemies(self.target, mist_radius, 2 + mastery // 2)
+            for enemy in spread_targets:
+                self.apply_poison(enemy, poison_dps, poison_timer)
+                self.apply_slow(enemy, max(0.50, 0.78 - mastery * 0.025), 0.8 + mastery * 0.12)
+                enemy.vulnerable_timer = max(enemy.vulnerable_timer, 0.7 + mastery * 0.12)
+                enemy.damage_multiplier = max(enemy.damage_multiplier, 1.04 + mastery * 0.01)
+                add_floating_text(enemy.x - 18, enemy.y - 40, "MIST", branch["color"])
+            return
+
+        if branch_key == "railgun":
+            if self.target.shield_hits > 0:
+                self.target.shield_hits = max(0, self.target.shield_hits - 1 - (1 if tower_level >= 7 else 0))
+                self.source_tower.shield_breaks += 1
+            if self.target.boss or has_behavior_tag(self.target, "armored"):
+                bonus = self.damage * (0.12 + rank * 0.018 + mastery * 0.035)
+                dealt = self.target.take_damage(bonus, "pierce", self.source_tower)
+                self.source_tower.total_damage += dealt
+                add_floating_text(self.target.x - 18, self.target.y - 48, "RAIL", branch["color"])
+            return
+
+        if branch_key == "spotter":
+            mark_time = 2.2 + rank * 0.22 + mastery * 0.30
+            self.target.marked_timer = max(self.target.marked_timer, mark_time)
+            self.target.vulnerable_timer = max(self.target.vulnerable_timer, 0.8 + mastery * 0.12)
+            self.target.damage_multiplier = max(self.target.damage_multiplier, 1.06 + mastery * 0.012)
+            add_floating_text(self.target.x - 18, self.target.y - 50, "PAINT", branch["color"])
+            return
+
+        if branch_key == "time_lag":
+            pending = self.damage * (0.18 + rank * 0.018 + mastery * 0.04)
+            self.target.echo_damage += pending
+            self.target.echo_timer = 0.45 if tower_level < 8 else 0.32
+            self.target.echo_damage_type = self.get_damage_type()
+            self.target.echo_source_tower = self.source_tower
+            add_floating_text(self.target.x - 16, self.target.y - 44, "ECHO", branch["color"])
+            return
 
         if mechanics.intersection({"mark", "paint", "shared_targeting"}):
             mark_time = 2.0 + max(0, tower_level - BRANCH_UNLOCK_LEVEL) * 0.35
@@ -3331,13 +3687,11 @@ def get_upgrade_options(tower):
     min_towers = get_min_towers_for_upgrade(tower.level) if tower.level >= BASE_MAX_TOWER_LEVEL else 1
     if next_level == PARAGON_LEVEL:
         title = data["paragon"]
-        description = ""
     elif next_level > PARAGON_LEVEL:
         title = f"Mastery {next_level}"
-        description = ""
     else:
         title = tower_tier_name(tower.tower_type, next_level, tower.selected_branch)
-        description = tower_tier_description(tower.tower_type, next_level, tower.selected_branch)
+    description = branch_upgrade_description(tower, next_level)
 
     return [
         {
@@ -3370,6 +3724,9 @@ def get_branch_options(tower):
                 "short": branch["short"],
                 "role": branch["role"],
                 "effect_preview": branch["effect_preview"],
+                "signature": branch["signature"],
+                "primary_mechanic": branch["primary_mechanic"],
+                "upgrade_effect": branch["upgrade_effects"][BRANCH_UNLOCK_LEVEL],
                 "focus": FOCUS_LABELS.get(branch["focus"], branch["focus"].title()),
                 "synergy": branch["synergy"],
                 "keystone": branch["keystone"],
@@ -3828,7 +4185,7 @@ def start_wave():
 
 
 def handle_command_click(pos):
-    global endless_mode, stars, starting_money_bonus_level, tower_damage_bonus_level
+    global endless_mode
     global victory, wave, wave_active, spawn_timer, spawned_this_wave
     global selected_build_type, selected_tower, paused, game_speed
     global sfx_enabled, music_enabled
@@ -3875,16 +4232,6 @@ def handle_command_click(pos):
         spawn_timer = 0
         spawned_this_wave = 0
         return True
-
-    if game_over or victory:
-        for rect, key in get_skill_button_rects():
-            if rect.collidepoint(pos) and stars > 0:
-                stars -= 1
-                if key == "money":
-                    starting_money_bonus_level += 1
-                else:
-                    tower_damage_bonus_level += 1
-                return True
 
     return False
 
@@ -4178,8 +4525,9 @@ def draw_sidebar_tooltips():
             if rect.collidepoint(mouse_pos):
                 lines = [
                     f"{option['title']} - ${option['cost']}",
-                    option["role"],
+                    f"{option['focus']}: {option['primary_mechanic']}",
                     option["effect_preview"],
+                    option["upgrade_effect"],
                 ]
                 lines.append("Click to choose" if option["enabled"] else "Need money")
                 draw_tooltip(lines, rect.y - 72)
@@ -4230,15 +4578,6 @@ def draw_end_options():
         pygame.draw.rect(screen, (38, 52, 70), rect)
         pygame.draw.rect(screen, (110, 165, 230), rect, 2)
         draw_small_text("Continue Endless", rect.x + 50, rect.y + 10, (235, 245, 255))
-
-    for rect, key in get_skill_button_rects():
-        pygame.draw.rect(screen, (42, 45, 38), rect)
-        pygame.draw.rect(screen, (180, 165, 90), rect, 2)
-        if key == "money":
-            label = f"+$25 Start L{starting_money_bonus_level}"
-        else:
-            label = f"+5% Damage L{tower_damage_bonus_level}"
-        draw_small_text(label, rect.x + 8, rect.y + 9, (245, 235, 180))
 
 
 def reset_game():

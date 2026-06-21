@@ -19,6 +19,9 @@ class GameplaySmokeTests(unittest.TestCase):
         app.active_map = mapgen.generate_random_map(12345)
         app.wave = 1
         app.money = config.STARTING_MONEY
+        app.game_over = False
+        app.victory = False
+        app.run_stars_awarded = False
 
     def test_wave_19_remains_shield_split_but_spawn_count_is_playable(self):
         self.assertEqual(waves.get_wave_label(19), "Shield + Fragmenting")
@@ -88,6 +91,20 @@ class GameplaySmokeTests(unittest.TestCase):
 
         self.assertAlmostEqual(damage, 112)
         self.assertIn("SCAN", labels)
+
+    def test_end_screen_old_skill_button_area_is_not_clickable(self):
+        app.game_over = True
+        app.victory = False
+        app.stars = 3
+        app.starting_money_bonus_level = 0
+        app.tower_damage_bonus_level = 0
+
+        for rect, _ in app.get_skill_button_rects():
+            self.assertFalse(app.handle_command_click(rect.center))
+
+        self.assertEqual(app.stars, 3)
+        self.assertEqual(app.starting_money_bonus_level, 0)
+        self.assertEqual(app.tower_damage_bonus_level, 0)
 
     def _find_valid_build_position(self):
         for x in range(config.BUILD_TILE_SIZE // 2, config.MAP_WIDTH, config.BUILD_GRID_STEP):

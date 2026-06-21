@@ -15,12 +15,15 @@ class GameplaySmokeTests(unittest.TestCase):
         app.effects.clear()
         app.selected_build_type = None
         app.selected_tower = None
+        app.pending_card_choices = []
+        app.selected_ability = None
+        app.ability_cooldowns = {"emp": 0.0, "quarantine": 0.0}
         app.active_map = mapgen.generate_random_map(12345)
         app.wave = 1
         app.money = config.STARTING_MONEY
 
     def test_wave_19_remains_shield_split_but_spawn_count_is_playable(self):
-        self.assertEqual(waves.get_wave_label(19), "Shield + Split")
+        self.assertEqual(waves.get_wave_label(19), "Shield + Fragmenting")
         self.assertLessEqual(waves.get_regular_enemy_count(19), 70)
         self.assertGreaterEqual(waves.get_spawn_interval(30), config.MIN_SPAWN_INTERVAL)
 
@@ -59,6 +62,7 @@ class GameplaySmokeTests(unittest.TestCase):
         always_visible.extend(rect for rect, _ in app.get_speed_button_rects())
         always_visible.extend(rect for rect, _ in app.get_shop_button_rects())
         always_visible.extend(rect for rect, _ in app.get_audio_button_rects())
+        always_visible.extend(rect for rect, _ in app.get_ability_button_rects())
 
         no_tower_selected = always_visible + [app.get_new_map_button_rect()]
         tower_selected = always_visible + [app.get_upgrade_panel_rect()]

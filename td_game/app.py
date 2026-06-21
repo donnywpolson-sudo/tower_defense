@@ -1,9 +1,11 @@
 import sys
 import math
 import argparse
+import asyncio
+import random
 import pygame
 
-from .assets import draw_sprite_centered, load_image, load_sound
+from .assets import draw_sprite_centered, load_image, load_sound, load_sound_any
 from .audio import make_tone
 from .config import *
 from .data import *
@@ -12,12 +14,15 @@ from .mapgen import generate_random_map
 from .particles import ParticleManager
 from .rendering import RenderOptions, make_renderer
 from .waves import (
+    WAVE_MODIFIERS,
     get_boss_count_for_wave as get_boss_count_for_wave_data,
+    get_commander_count_for_wave as get_commander_count_for_wave_data,
     get_regular_enemy_count as get_regular_enemy_count_data,
     get_spawn_interval as get_spawn_interval_data,
     get_wave_affix as get_wave_affix_data,
     get_wave_enemy_kind as get_wave_enemy_kind_data,
     get_wave_label as get_wave_label_data,
+    get_wave_modifier_data as get_wave_modifier_data_for_wave,
 )
 
 pygame.init()
@@ -46,6 +51,13 @@ game_speed = 1.0
 screen_shake_timer = 0
 screen_shake_strength = 0
 boss_warning_timer = 0
+pending_card_choices = []
+run_damage_bonus = 0.0
+run_range_bonus = 0.0
+next_wave_bounty_bonus = 0
+next_wave_bounty_wave = None
+selected_ability = None
+ability_cooldowns = {"emp": 0.0, "quarantine": 0.0}
 
 enemies = []
 towers = []
@@ -83,9 +95,51 @@ particle_manager = ParticleManager(MAX_PARTICLES)
 glow_cache = {}
 scaled_sprite_cache = {}
 
+COMMANDER_AURA_RADIUS = 118
+EMP_COOLDOWN = 18.0
+QUARANTINE_COOLDOWN = 14.0
+QUARANTINE_RADIUS = 116
+
+CARD_POOL = {
+    "cpu_cache": {
+        "label": "CPU Cache",
+        "description": "Gain emergency CPU for new defenses.",
+        "color": (245, 220, 120),
+    },
+    "research_grant": {
+        "label": "Patch Notes",
+        "description": "Gain bonus research for mastery upgrades.",
+        "color": (150, 220, 255),
+    },
+    "core_patch": {
+        "label": "Core Patch",
+        "description": "Repair core integrity.",
+        "color": (130, 225, 145),
+    },
+    "range_patch": {
+        "label": "Range Protocol",
+        "description": "All towers gain permanent range.",
+        "color": (180, 215, 245),
+    },
+    "damage_patch": {
+        "label": "Damage Protocol",
+        "description": "All towers gain permanent damage.",
+        "color": (245, 155, 110),
+    },
+    "bounty_trace": {
+        "label": "Bounty Trace",
+        "description": "Next wave pays bonus CPU per packet.",
+        "color": (245, 225, 95),
+    },
+}
+
+
+def is_web_runtime():
+    return sys.platform == "emscripten"
+
 
 def parse_runtime_options(argv=None):
-    parser = argparse.ArgumentParser(description="Tower Defense")
+    parser = argparse.ArgumentParser(description="Signal Defense")
     parser.add_argument("--renderer", choices=("pygame", "opengl"), default=RENDERER)
     parser.add_argument("--enable-glow", dest="enable_glow", action="store_true", default=ENABLE_GLOW)
     parser.add_argument("--disable-glow", dest="enable_glow", action="store_false")
@@ -187,14 +241,21 @@ def get_wave_recommendation(wave_number=None):
     preview_wave = wave if wave_number is None else wave_number
     kind = get_wave_enemy_kind(preview_wave)
     affix = get_wave_affix(preview_wave)
+    modifier = get_wave_modifier_data(preview_wave)
     bosses = get_boss_count_for_wave(preview_wave)
+    commanders = get_commander_count_for_wave(preview_wave)
     recommendations = []
     tower_types = []
 
     if bosses:
         recommendations.append("Boss incoming. Add Sniper/Cannon damage.")
         tower_types.extend(["sniper", "cannon"])
-    if kind == "shield" or affix == "shield":
+    if commanders:
+        recommendations.append("Commander packet: focus-fire the aura source.")
+        tower_types.extend(["sniper", "tesla"])
+    if modifier:
+        recommendations.append(modifier["recommendation"])
+    if kind == "shield":
         recommendations.append("Shield: Sniper or Cannon. Tesla is weaker.")
         tower_types.extend(["sniper", "cannon"])
     if kind == "armored" or affix == "armored":
@@ -364,33 +425,33 @@ def init_sounds():
         if not pygame.mixer.get_init():
             pygame.mixer.init(frequency=22050, size=-16, channels=1, buffer=256)
         sounds = {
-            "build": load_sound("sounds/ui/build.wav") or make_tone(360, 0.08, 0.22),
-            "upgrade": load_sound("sounds/ui/upgrade.wav") or make_tone(620, 0.10, 0.22),
-            "sell": load_sound("sounds/ui/sell.wav") or make_tone(260, 0.10, 0.18),
-            "wave": load_sound("sounds/ui/wave.wav") or make_tone(480, 0.13, 0.20),
-            "wave_fast": load_sound("sounds/ui/wave_fast.wav") or make_tone(920, 0.10, 0.18),
-            "wave_tank": load_sound("sounds/ui/wave_tank.wav") or make_tone(110, 0.14, 0.18),
-            "wave_shield": load_sound("sounds/ui/wave_shield.wav") or make_tone(360, 0.12, 0.18),
-            "wave_flying": load_sound("sounds/ui/wave_flying.wav") or make_tone(1040, 0.14, 0.16),
-            "wave_boss": load_sound("sounds/ui/wave_boss.wav") or make_tone(90, 0.18, 0.20),
-            "wave_complete": load_sound("sounds/ui/wave_complete.wav") or make_tone(680, 0.10, 0.18),
-            "death": load_sound("sounds/enemies/death.wav") or make_tone(150, 0.08, 0.16),
-            "leak": load_sound("sounds/enemies/leak.wav") or make_tone(130, 0.12, 0.16),
-            "boss_spawn": load_sound("sounds/enemies/boss_spawn.wav") or make_tone(95, 0.16, 0.18),
-            "boss_death": load_sound("sounds/enemies/boss_death.wav") or make_tone(110, 0.16, 0.18),
-            "archer": load_sound("sounds/towers/archer.wav") or make_tone(520, 0.035, 0.10),
-            "sniper": load_sound("sounds/towers/sniper.wav") or make_tone(880, 0.055, 0.16),
-            "machine_gun": load_sound("sounds/towers/machine_gun.wav") or make_tone(700, 0.025, 0.07),
-            "cannon": load_sound("sounds/towers/cannon.wav") or make_tone(120, 0.12, 0.20),
-            "frost": load_sound("sounds/towers/frost.wav") or make_tone(760, 0.07, 0.12),
-            "tesla": load_sound("sounds/towers/tesla.wav") or make_tone(1050, 0.04, 0.11),
-            "poison": load_sound("sounds/towers/poison.wav") or make_tone(540, 0.055, 0.10),
-            "flame": load_sound("sounds/towers/flame.wav") or make_tone(210, 0.07, 0.13),
-            "mortar": load_sound("sounds/towers/mortar.wav") or make_tone(85, 0.12, 0.18),
-            "gold": load_sound("sounds/towers/gold.wav") or make_tone(760, 0.06, 0.12),
-            "freeze": load_sound("sounds/towers/freeze.wav") or make_tone(900, 0.08, 0.12),
-            "chain": load_sound("sounds/towers/chain.wav") or make_tone(1100, 0.04, 0.10),
-            "shield_break": load_sound("sounds/enemies/shield_break.wav") or make_tone(420, 0.07, 0.14),
+            "build": load_game_sound("sounds/ui/build.wav") or make_tone(360, 0.08, 0.22),
+            "upgrade": load_game_sound("sounds/ui/upgrade.wav") or make_tone(620, 0.10, 0.22),
+            "sell": load_game_sound("sounds/ui/sell.wav") or make_tone(260, 0.10, 0.18),
+            "wave": load_game_sound("sounds/ui/wave.wav") or make_tone(480, 0.13, 0.20),
+            "wave_fast": load_game_sound("sounds/ui/wave_fast.wav") or make_tone(920, 0.10, 0.18),
+            "wave_tank": load_game_sound("sounds/ui/wave_tank.wav") or make_tone(110, 0.14, 0.18),
+            "wave_shield": load_game_sound("sounds/ui/wave_shield.wav") or make_tone(360, 0.12, 0.18),
+            "wave_flying": load_game_sound("sounds/ui/wave_flying.wav") or make_tone(1040, 0.14, 0.16),
+            "wave_boss": load_game_sound("sounds/ui/wave_boss.wav") or make_tone(90, 0.18, 0.20),
+            "wave_complete": load_game_sound("sounds/ui/wave_complete.wav") or make_tone(680, 0.10, 0.18),
+            "death": load_game_sound("sounds/enemies/death.wav") or make_tone(150, 0.08, 0.16),
+            "leak": load_game_sound("sounds/enemies/leak.wav") or make_tone(130, 0.12, 0.16),
+            "boss_spawn": load_game_sound("sounds/enemies/boss_spawn.wav") or make_tone(95, 0.16, 0.18),
+            "boss_death": load_game_sound("sounds/enemies/boss_death.wav") or make_tone(110, 0.16, 0.18),
+            "archer": load_game_sound("sounds/towers/archer.wav") or make_tone(520, 0.035, 0.10),
+            "sniper": load_game_sound("sounds/towers/sniper.wav") or make_tone(880, 0.055, 0.16),
+            "machine_gun": load_game_sound("sounds/towers/machine_gun.wav") or make_tone(700, 0.025, 0.07),
+            "cannon": load_game_sound("sounds/towers/cannon.wav") or make_tone(120, 0.12, 0.20),
+            "frost": load_game_sound("sounds/towers/frost.wav") or make_tone(760, 0.07, 0.12),
+            "tesla": load_game_sound("sounds/towers/tesla.wav") or make_tone(1050, 0.04, 0.11),
+            "poison": load_game_sound("sounds/towers/poison.wav") or make_tone(540, 0.055, 0.10),
+            "flame": load_game_sound("sounds/towers/flame.wav") or make_tone(210, 0.07, 0.13),
+            "mortar": load_game_sound("sounds/towers/mortar.wav") or make_tone(85, 0.12, 0.18),
+            "gold": load_game_sound("sounds/towers/gold.wav") or make_tone(760, 0.06, 0.12),
+            "freeze": load_game_sound("sounds/towers/freeze.wav") or make_tone(900, 0.08, 0.12),
+            "chain": load_game_sound("sounds/towers/chain.wav") or make_tone(1100, 0.04, 0.10),
+            "shield_break": load_game_sound("sounds/enemies/shield_break.wav") or make_tone(420, 0.07, 0.14),
         }
         music_path = ASSET_DIR / "sounds/music/loop.wav"
         if music_path.exists():
@@ -419,6 +480,12 @@ def play_sound(name, cooldown=0.04):
         sounds[name].play()
     except pygame.error:
         pass
+
+
+def load_game_sound(relative_path):
+    if is_web_runtime() and relative_path.endswith(".wav"):
+        return load_sound_any(relative_path[:-4] + ".ogg", relative_path)
+    return load_sound(relative_path)
 
 
 def get_wave_stinger_key(wave_number=None):
@@ -571,8 +638,42 @@ def has_behavior_tag(enemy, tag):
     return tag in enemy.behavior_tags()
 
 
+def apply_modifier_effects(enemy, modifier_key):
+    if modifier_key is None:
+        return enemy
+
+    modifier = WAVE_MODIFIERS.get(modifier_key)
+    if modifier is None:
+        return enemy
+
+    effects_data = modifier["effects"]
+    if "regen_scale" in effects_data:
+        enemy.regen_rate = max(3, enemy.max_hp * effects_data["regen_scale"])
+    if "shield_hits" in effects_data:
+        enemy.shield_hits += effects_data["shield_hits"]
+    if "speed_multiplier" in effects_data:
+        enemy.speed *= effects_data["speed_multiplier"]
+    if "death_spawns" in effects_data:
+        enemy.death_spawns += effects_data["death_spawns"]
+    return enemy
+
+
 class Enemy:
-    def __init__(self, hp, speed, reward, kind="normal", shield_hits=0, flying=False, boss=False, death_spawns=0, affix=None, path_index=0, is_split_child=False):
+    def __init__(
+        self,
+        hp,
+        speed,
+        reward,
+        kind="normal",
+        shield_hits=0,
+        flying=False,
+        boss=False,
+        commander=False,
+        death_spawns=0,
+        affix=None,
+        path_index=0,
+        is_split_child=False,
+    ):
         self.path_index = path_index % len(current_paths())
         self.path = current_paths()[self.path_index]
         self.x, self.y = self.path[0]
@@ -585,11 +686,12 @@ class Enemy:
         self.shield_hits = shield_hits
         self.flying = flying
         self.boss = boss
+        self.commander = commander
         self.death_spawns = death_spawns
         self.affix = affix
         self.is_split_child = is_split_child
         self.leak_damage = 5 if boss else 1
-        self.radius = 10 if is_split_child else 26 if boss else 15
+        self.radius = 10 if is_split_child else 26 if boss else 18 if commander else 15
         self.reached_end = False
         self.burn_timer = 0
         self.burn_dps = 0
@@ -607,15 +709,9 @@ class Enemy:
         self.shield_break_timer = 0
         self.marked_timer = 0
         self.barracks_hold_timer = 0
+        self.commander_aura_timer = 0
         self.last_damaging_tower = None
-        if affix == "regen":
-            self.regen_rate = max(3, self.max_hp * 0.012)
-        elif affix == "armored":
-            self.shield_hits += 1
-        elif affix == "haste":
-            self.speed *= 1.22
-        elif affix == "split":
-            self.death_spawns += 1
+        apply_modifier_effects(self, affix)
 
     def behavior_tags(self):
         tags = set()
@@ -629,12 +725,17 @@ class Enemy:
             tags.add("flying")
         if self.boss:
             tags.add("boss")
+        if self.commander:
+            tags.add("commander")
         return tags
 
     def take_damage(self, amount, damage_type=None, source_tower=None):
         self.hit_flash_timer = 0.12
         tags = self.behavior_tags()
         effective_damage_type = damage_type
+
+        if self.commander_aura_timer > 0 and not self.commander:
+            amount *= 0.86
 
         if source_tower is not None:
             self.last_damaging_tower = source_tower
@@ -699,6 +800,8 @@ class Enemy:
             self.marked_timer -= dt
         if self.barracks_hold_timer > 0:
             self.barracks_hold_timer -= dt
+        if self.commander_aura_timer > 0:
+            self.commander_aura_timer -= dt
 
         if self.vulnerable_timer > 0:
             self.vulnerable_timer -= dt
@@ -747,6 +850,8 @@ class Enemy:
             return
 
         current_speed = self.speed
+        if self.commander_aura_timer > 0 and not self.commander:
+            current_speed *= 1.14
         if self.slow_timer > 0:
             current_speed *= self.slow_multiplier
             self.slow_timer -= dt
@@ -768,6 +873,8 @@ class Enemy:
             color = (170, 170, 190)
         elif self.kind == "armored":
             color = (130, 130, 145)
+        elif self.commander:
+            color = (245, 210, 90)
         elif self.flying:
             color = (185, 120, 245)
         elif self.boss:
@@ -785,7 +892,7 @@ class Enemy:
             color = (110, 220, 80)
 
         pygame.draw.ellipse(screen, (0, 0, 0, 85), (int(self.x - self.radius), int(self.y + self.radius * 0.58), self.radius * 2, max(4, self.radius // 2)))
-        sprite_key = "boss" if self.boss else "split_child" if self.is_split_child else "flying" if self.flying else "shield_cracked" if self.kind == "shield" and self.shield_hits <= 0 else self.kind
+        sprite_key = "boss" if self.boss else "shield" if self.commander else "split_child" if self.is_split_child else "flying" if self.flying else "shield_cracked" if self.kind == "shield" and self.shield_hits <= 0 else self.kind
         frames = images.get("enemies", {}).get(sprite_key, {})
         if self.hit_flash_timer > 0:
             sprite = frames.get("hit") or frames.get("base")
@@ -813,9 +920,15 @@ class Enemy:
             pygame.draw.circle(screen, (235, 225, 255), (int(self.x), int(self.y)), self.radius + 4, 1)
         if self.affix and not crowded:
             pygame.draw.circle(screen, (255, 255, 140), (int(self.x), int(self.y)), self.radius + 8, 1)
+        if self.commander and not crowded:
+            pygame.draw.circle(screen, (245, 220, 90), (int(self.x), int(self.y)), self.radius + 10, 3)
+            draw_tiny_text("CMD", int(self.x - 15), int(self.y - self.radius - 30), (255, 235, 130))
+        elif self.commander_aura_timer > 0 and not crowded:
+            pygame.draw.circle(screen, (245, 220, 90), (int(self.x), int(self.y)), self.radius + 7, 1)
 
         show_health_bar = (
             self.boss
+            or self.commander
             or len(enemies) < CROWD_HEALTH_BAR_LIMIT
             or self.hit_flash_timer > 0
             or self.hp < self.max_hp * 0.55
@@ -1384,13 +1497,13 @@ class Tower:
         return bonus
 
     def effective_damage(self):
-        return self.damage * (1 + tower_damage_bonus_level * 0.05 + self.support_bonus("damage"))
+        return self.damage * (1 + tower_damage_bonus_level * 0.05 + run_damage_bonus + self.support_bonus("damage"))
 
     def effective_fire_rate(self):
         return max(0.025, self.fire_rate * (1 - self.support_bonus("rate")))
 
     def effective_range(self):
-        return self.range * (1 + self.support_bonus("range"))
+        return self.range * (1 + run_range_bonus + self.support_bonus("range"))
 
     def draw(self):
         data = TOWER_TYPES.get(self.tower_type)
@@ -2283,6 +2396,16 @@ def draw_build_preview():
     pygame.draw.circle(screen, range_color, site, int(preview_tower.range), 1)
 
 
+def draw_ability_preview():
+    if selected_ability != "quarantine":
+        return
+
+    mx, my = get_game_mouse_pos()
+    if 0 <= mx < MAP_WIDTH and BUILD_GRID_TOP <= my <= HEIGHT:
+        pygame.draw.circle(screen, (150, 230, 255), (mx, my), QUARANTINE_RADIUS, 2)
+        pygame.draw.circle(screen, (80, 150, 180), (mx, my), QUARANTINE_RADIUS // 2, 1)
+
+
 def can_place_tower(pos):
     global money
 
@@ -2322,10 +2445,32 @@ def spawn_enemy():
     return True
 
 
+def update_commander_auras():
+    commanders = [enemy for enemy in enemies if enemy.commander and enemy.hp > 0]
+    if not commanders:
+        return
+
+    for commander in commanders:
+        for enemy in enemies:
+            if enemy == commander or enemy.hp <= 0:
+                continue
+            if dist((commander.x, commander.y), (enemy.x, enemy.y)) <= COMMANDER_AURA_RADIUS:
+                enemy.commander_aura_timer = max(enemy.commander_aura_timer, 0.22)
+
+
 def get_next_enemy_kind():
-    if spawned_this_wave < get_boss_count_for_wave():
+    boss_count = get_boss_count_for_wave()
+    if spawned_this_wave < boss_count:
         return "boss"
+    if spawned_this_wave < boss_count + get_commander_count_for_wave():
+        return "commander"
     return get_wave_enemy_kind()
+
+
+def apply_bounty_bonus(enemy):
+    if next_wave_bounty_wave == wave and next_wave_bounty_bonus > 0:
+        enemy.reward += next_wave_bounty_bonus
+    return enemy
 
 
 def get_boss_count_for_wave(wave_number=None):
@@ -2333,9 +2478,18 @@ def get_boss_count_for_wave(wave_number=None):
     return get_boss_count_for_wave_data(preview_wave)
 
 
+def get_commander_count_for_wave(wave_number=None):
+    preview_wave = wave if wave_number is None else wave_number
+    return get_commander_count_for_wave_data(preview_wave)
+
+
 def get_enemies_per_wave(wave_number=None):
     preview_wave = wave if wave_number is None else wave_number
-    return get_regular_enemy_count_data(preview_wave) + get_boss_count_for_wave(preview_wave)
+    return (
+        get_regular_enemy_count_data(preview_wave)
+        + get_boss_count_for_wave(preview_wave)
+        + get_commander_count_for_wave(preview_wave)
+    )
 
 
 def get_spawn_interval(wave_number=None):
@@ -2358,21 +2512,18 @@ def get_wave_affix(wave_number=None):
     return get_wave_affix_data(preview_wave)
 
 
+def get_wave_modifier_data(wave_number=None):
+    preview_wave = wave if wave_number is None else wave_number
+    return get_wave_modifier_data_for_wave(preview_wave)
+
+
 def apply_wave_affix(enemy):
     affix = get_wave_affix()
     if enemy.boss or affix is None:
         return enemy
 
     enemy.affix = affix
-    if affix == "regen":
-        enemy.regen_rate = max(3, enemy.max_hp * 0.012)
-    elif affix == "armored":
-        enemy.shield_hits += 1
-    elif affix == "haste":
-        enemy.speed *= 1.22
-    elif affix == "split":
-        enemy.death_spawns += 1
-    return enemy
+    return apply_modifier_effects(enemy, affix)
 
 
 def create_enemy(kind, x=None, y=None, target_index=1, path_index=0, allow_affix=True):
@@ -2399,7 +2550,7 @@ def create_enemy(kind, x=None, y=None, target_index=1, path_index=0, allow_affix
         enemy = Enemy(hp, speed, reward, kind=kind, shield_hits=2, path_index=path_index)
         if allow_affix:
             enemy = apply_wave_affix(enemy)
-        return place_spawned_enemy(enemy, x, y, target_index)
+        return place_spawned_enemy(apply_bounty_bonus(enemy), x, y, target_index)
     elif kind == "flying":
         hp *= 0.9
         speed *= 1.35
@@ -2407,7 +2558,7 @@ def create_enemy(kind, x=None, y=None, target_index=1, path_index=0, allow_affix
         enemy = Enemy(hp, speed, reward, kind=kind, flying=True, path_index=path_index)
         if allow_affix:
             enemy = apply_wave_affix(enemy)
-        return place_spawned_enemy(enemy, x, y, target_index)
+        return place_spawned_enemy(apply_bounty_bonus(enemy), x, y, target_index)
     elif kind == "armored":
         hp *= 1.35
         speed *= 0.85
@@ -2415,14 +2566,22 @@ def create_enemy(kind, x=None, y=None, target_index=1, path_index=0, allow_affix
         enemy = Enemy(hp, speed, reward, kind=kind, shield_hits=3, path_index=path_index)
         if allow_affix:
             enemy = apply_wave_affix(enemy)
-        return place_spawned_enemy(enemy, x, y, target_index)
+        return place_spawned_enemy(apply_bounty_bonus(enemy), x, y, target_index)
     elif kind == "boss":
         return create_boss_enemy(path_index)
+    elif kind == "commander":
+        hp *= 2.6
+        speed *= 0.86
+        reward += 18
+        enemy = Enemy(hp, speed, reward, kind=kind, shield_hits=1, commander=True, path_index=path_index)
+        if allow_affix:
+            enemy = apply_wave_affix(enemy)
+        return place_spawned_enemy(apply_bounty_bonus(enemy), x, y, target_index)
 
     enemy = Enemy(hp, speed, reward, kind=kind, path_index=path_index)
     if allow_affix:
         enemy = apply_wave_affix(enemy)
-    return place_spawned_enemy(enemy, x, y, target_index)
+    return place_spawned_enemy(apply_bounty_bonus(enemy), x, y, target_index)
 
 
 def create_boss_enemy(path_index=0):
@@ -2432,16 +2591,16 @@ def create_boss_enemy(path_index=0):
     reward = 75 + boss_tier * 25
 
     if wave == 5:
-        return Enemy(hp, speed, reward, kind="ogre boss", boss=True, path_index=path_index)
+        return apply_bounty_bonus(Enemy(hp, speed, reward, kind="ogre boss", boss=True, path_index=path_index))
     if wave == 10:
-        return Enemy(hp * 1.25, speed * 0.9, reward + 20, kind="armored boss", shield_hits=6, boss=True, path_index=path_index)
+        return apply_bounty_bonus(Enemy(hp * 1.25, speed * 0.9, reward + 20, kind="armored boss", shield_hits=6, boss=True, path_index=path_index))
     if wave == 15:
-        return Enemy(hp * 1.1, speed, reward + 25, kind="iron boss", shield_hits=8, boss=True, path_index=path_index)
+        return apply_bounty_bonus(Enemy(hp * 1.1, speed, reward + 25, kind="iron boss", shield_hits=8, boss=True, path_index=path_index))
     if wave == 20:
-        return Enemy(hp, speed * 0.95, reward + 35, kind="summoner boss", boss=True, death_spawns=12, path_index=path_index)
+        return apply_bounty_bonus(Enemy(hp, speed * 0.95, reward + 35, kind="summoner boss", boss=True, death_spawns=12, path_index=path_index))
     if wave == 25:
-        return Enemy(hp * 1.2, speed * 1.15, reward + 45, kind="sky boss", flying=True, boss=True, path_index=path_index)
-    return Enemy(hp * 1.55, speed, reward + 75, kind="final boss", shield_hits=8, boss=True, death_spawns=18, path_index=path_index)
+        return apply_bounty_bonus(Enemy(hp * 1.2, speed * 1.15, reward + 45, kind="sky boss", flying=True, boss=True, path_index=path_index))
+    return apply_bounty_bonus(Enemy(hp * 1.55, speed, reward + 75, kind="final boss", shield_hits=8, boss=True, death_spawns=18, path_index=path_index))
 
 
 def place_spawned_enemy(enemy, x=None, y=None, target_index=1):
@@ -2902,21 +3061,208 @@ def get_skill_button_rects():
     ]
 
 
+def get_ability_button_rects():
+    return [
+        (pygame.Rect(MAP_WIDTH + 14, 226, 120, 26), "emp"),
+        (pygame.Rect(MAP_WIDTH + 142, 226, 120, 26), "quarantine"),
+    ]
+
+
+def get_reward_card_rects():
+    if not pending_card_choices:
+        return []
+
+    card_w = 190
+    card_h = 112
+    gap = 20
+    total_w = card_w * 3 + gap * 2
+    start_x = (MAP_WIDTH - total_w) // 2
+    y = 168
+    return [
+        (pygame.Rect(start_x + index * (card_w + gap), y, card_w, card_h), card_key)
+        for index, card_key in enumerate(pending_card_choices[:3])
+    ]
+
+
+def map_seed_value():
+    seed = active_map.get("seed")
+    if isinstance(seed, int):
+        return seed
+    return (current_map_index + 1) * 1000
+
+
+def generate_reward_card_choices(completed_wave):
+    rng = random.Random(map_seed_value() * 1009 + completed_wave * 9173)
+    card_keys = list(CARD_POOL)
+    rng.shuffle(card_keys)
+    return card_keys[:3]
+
+
+def reward_card_effect_text(card_key):
+    if card_key == "cpu_cache":
+        return "+$60 CPU"
+    if card_key == "research_grant":
+        return "+2 Research"
+    if card_key == "core_patch":
+        return "+4 Core"
+    if card_key == "range_patch":
+        return "+4% Range"
+    if card_key == "damage_patch":
+        return "+5% Damage"
+    if card_key == "bounty_trace":
+        return "+$2 Next Wave"
+    return ""
+
+
+def apply_reward_card(card_key):
+    global money, research_points, lives, run_damage_bonus, run_range_bonus
+    global next_wave_bounty_bonus, next_wave_bounty_wave, pending_card_choices
+
+    if card_key not in pending_card_choices:
+        return False
+
+    if card_key == "cpu_cache":
+        money += 60
+    elif card_key == "research_grant":
+        research_points += 2
+    elif card_key == "core_patch":
+        lives = min(STARTING_LIVES, lives + 4)
+    elif card_key == "range_patch":
+        run_range_bonus += 0.04
+    elif card_key == "damage_patch":
+        run_damage_bonus += 0.05
+    elif card_key == "bounty_trace":
+        next_wave_bounty_bonus += 2
+        next_wave_bounty_wave = wave
+    else:
+        return False
+
+    pending_card_choices = []
+    play_sound("upgrade", 0.08)
+    return True
+
+
+def handle_reward_card_click(pos):
+    for rect, card_key in get_reward_card_rects():
+        if rect.collidepoint(pos):
+            return apply_reward_card(card_key)
+    return False
+
+
+def update_ability_cooldowns(dt):
+    for key in ability_cooldowns:
+        ability_cooldowns[key] = max(0.0, ability_cooldowns[key] - dt)
+
+
+def trigger_emp_pulse():
+    if ability_cooldowns["emp"] > 0:
+        return False
+    if not enemies:
+        return False
+
+    for enemy in enemies:
+        if enemy.shield_hits > 0:
+            enemy.shield_hits = max(0, enemy.shield_hits - 2)
+            enemy.shield_break_timer = max(enemy.shield_break_timer, 0.26)
+        enemy.slow_timer = max(enemy.slow_timer, 1.35)
+        enemy.slow_multiplier = min(enemy.slow_multiplier, 0.62)
+        if enemy.commander:
+            enemy.vulnerable_timer = max(enemy.vulnerable_timer, 2.0)
+            enemy.damage_multiplier = max(enemy.damage_multiplier, 1.2)
+            enemy.take_damage(max(40, enemy.max_hp * 0.07), "electric", None)
+        add_effect(SparkEffect(enemy.x, enemy.y, (160, 220, 255), enemy.radius + 12, 0.22, "lightning_spark"))
+
+    ability_cooldowns["emp"] = EMP_COOLDOWN
+    add_effect(BurstEffect(MAP_WIDTH // 2, HEIGHT // 2, (120, 210, 255), 220, 0.35, "frost_burst"))
+    play_sound("shield_break", 0.15)
+    return True
+
+
+def trigger_quarantine_zone(pos):
+    global selected_ability
+
+    if ability_cooldowns["quarantine"] > 0:
+        return False
+
+    x, y = pos
+    for enemy in enemies:
+        if dist((x, y), (enemy.x, enemy.y)) > QUARANTINE_RADIUS:
+            continue
+        enemy.slow_timer = max(enemy.slow_timer, 3.0)
+        enemy.slow_multiplier = min(enemy.slow_multiplier, 0.35)
+        enemy.freeze_timer = max(enemy.freeze_timer, 0.45 if enemy.boss else 1.1)
+        if enemy.commander:
+            enemy.vulnerable_timer = max(enemy.vulnerable_timer, 2.2)
+            enemy.damage_multiplier = max(enemy.damage_multiplier, 1.18)
+
+    ability_cooldowns["quarantine"] = QUARANTINE_COOLDOWN
+    selected_ability = None
+    add_effect(BurstEffect(x, y, (150, 230, 255), QUARANTINE_RADIUS, 0.45, "frost_burst"))
+    play_sound("freeze", 0.16)
+    return True
+
+
+def handle_ability_button_click(pos):
+    global selected_ability
+
+    for rect, ability_key in get_ability_button_rects():
+        if not rect.collidepoint(pos):
+            continue
+        if ability_key == "emp":
+            selected_ability = None
+            return trigger_emp_pulse()
+        if ability_cooldowns["quarantine"] <= 0:
+            selected_ability = "quarantine"
+        return True
+    return False
+
+
+def complete_current_wave():
+    global money, research_points, wave, spawned_this_wave, spawn_timer, wave_active, victory
+    global next_wave_bounty_bonus, next_wave_bounty_wave, pending_card_choices
+
+    completed_wave = wave
+    for tower in towers:
+        tower.waves_present += 1
+    earned_research = get_research_reward(completed_wave)
+    money += START_WAVE_BONUS + wave
+    research_points += earned_research
+    add_floating_text(MAP_WIDTH // 2 - 30, 90, f"+{earned_research} Research", (150, 220, 255))
+    play_sound("wave_complete", 0.3)
+
+    if next_wave_bounty_wave == completed_wave:
+        next_wave_bounty_bonus = 0
+        next_wave_bounty_wave = None
+
+    wave += 1
+    spawned_this_wave = 0
+    spawn_timer = 0
+    wave_active = False
+
+    if wave > MAX_WAVE and not endless_mode:
+        victory = True
+        pending_card_choices = []
+    else:
+        pending_card_choices = generate_reward_card_choices(completed_wave)
+
+
 def start_wave():
     global wave_active, spawn_timer, spawned_this_wave, spawn_path_index
 
-    if not wave_active and not game_over and not victory:
+    if not wave_active and not game_over and not victory and not pending_card_choices:
         wave_active = True
         spawn_timer = 0
         spawned_this_wave = 0
         spawn_path_index = 0
         play_wave_start_sound()
+        return True
+    return False
 
 
 def handle_command_click(pos):
     global endless_mode, stars, starting_money_bonus_level, tower_damage_bonus_level
     global victory, wave, wave_active, spawn_timer, spawned_this_wave
-    global selected_build_type, selected_shop_tab, selected_tower, paused, game_speed
+    global selected_build_type, selected_shop_tab, selected_tower, paused, game_speed, selected_ability
     global sfx_enabled, music_enabled
 
     if get_start_wave_button_rect().collidepoint(pos):
@@ -2934,7 +3280,13 @@ def handle_command_click(pos):
         if rect.collidepoint(pos):
             selected_build_type = tower_type
             selected_tower = None
+            selected_ability = None
             return True
+
+    if handle_ability_button_click(pos):
+        selected_build_type = None
+        selected_tower = None
+        return True
 
     if get_pause_button_rect().collidepoint(pos):
         paused = not paused
@@ -3029,17 +3381,18 @@ def mutation_tooltip_lines(mutation_key, owned=False):
 def draw_sidebar_background():
     pygame.draw.rect(screen, (20, 24, 22), (MAP_WIDTH, 0, UI_WIDTH, HEIGHT))
     pygame.draw.line(screen, (75, 82, 70), (MAP_WIDTH, 0), (MAP_WIDTH, HEIGHT), 2)
-    draw_text("Command", MAP_WIDTH + 14, 8, (245, 245, 230))
+    draw_text("Signal Defense", MAP_WIDTH + 14, 8, (245, 245, 230))
 
 
 def draw_start_and_speed_controls():
     rect = get_start_wave_button_rect()
-    start_enabled = not wave_active and not game_over and not victory
+    start_enabled = not wave_active and not game_over and not victory and not pending_card_choices
     fill = (42, 70, 45) if start_enabled else (46, 48, 44)
     outline = (105, 210, 120) if start_enabled else (95, 95, 85)
     pygame.draw.rect(screen, fill, rect)
     pygame.draw.rect(screen, outline, rect, 2)
-    draw_small_text("Start Wave", rect.x + 76, rect.y + 9, (245, 255, 245) if start_enabled else (155, 155, 145))
+    label = "Start Wave" if not pending_card_choices else "Choose Protocol"
+    draw_small_text(label, rect.x + 64, rect.y + 9, (245, 255, 245) if start_enabled else (155, 155, 145))
 
     pause_rect = get_pause_button_rect()
     pygame.draw.rect(screen, (42, 48, 58), pause_rect)
@@ -3058,6 +3411,50 @@ def draw_start_and_speed_controls():
         pygame.draw.rect(screen, (100, 190, 125) if active else (150, 85, 85), audio_rect, 2)
         label = "SFX ON" if key == "sfx" and active else "SFX OFF" if key == "sfx" else "Music ON" if active else "Music OFF"
         draw_tiny_text(label, audio_rect.x + 12, audio_rect.y + 5, (235, 240, 220))
+
+
+def draw_system_abilities():
+    labels = {
+        "emp": "EMP Pulse",
+        "quarantine": "Quarantine",
+    }
+    for rect, ability_key in get_ability_button_rects():
+        cooldown = ability_cooldowns[ability_key]
+        ready = cooldown <= 0
+        armed = selected_ability == ability_key
+        fill = (38, 58, 64) if ready else (42, 43, 43)
+        if armed:
+            fill = (36, 72, 82)
+        outline = (120, 220, 255) if ready else (95, 95, 85)
+        if armed:
+            outline = (190, 245, 255)
+        pygame.draw.rect(screen, fill, rect)
+        pygame.draw.rect(screen, outline, rect, 2)
+        label = labels[ability_key]
+        if cooldown > 0:
+            label = f"{label[:3]} {int(cooldown) + 1}s"
+        elif armed:
+            label = "Click Map"
+        draw_tiny_text(label, rect.x + 8, rect.y + 7, (235, 250, 255) if ready else (165, 165, 150))
+
+
+def draw_reward_cards():
+    if not pending_card_choices:
+        return
+
+    overlay = pygame.Surface((MAP_WIDTH, HEIGHT), pygame.SRCALPHA)
+    overlay.fill((5, 8, 10, 138))
+    screen.blit(overlay, (0, 0))
+
+    draw_text("Choose System Protocol", 320, 120, (245, 250, 255))
+    for rect, card_key in get_reward_card_rects():
+        card = CARD_POOL[card_key]
+        pygame.draw.rect(screen, (24, 31, 34), rect)
+        pygame.draw.rect(screen, card["color"], rect, 2)
+        draw_small_text(card["label"], rect.x + 12, rect.y + 12, (255, 255, 245))
+        draw_small_text(reward_card_effect_text(card_key), rect.x + 12, rect.y + 40, card["color"])
+        for index, line in enumerate(wrap_text(card["description"], 23)[:2]):
+            draw_tiny_text(line, rect.x + 12, rect.y + 70 + index * 16, (215, 225, 225))
 
 
 def draw_tower_shop():
@@ -3097,11 +3494,17 @@ def draw_wave_timeline():
         row_y = y + 24 + index * 22
         kind = get_wave_enemy_kind(preview_wave)
         bosses = get_boss_count_for_wave(preview_wave)
+        commanders = get_commander_count_for_wave(preview_wave)
+        modifier = get_wave_modifier_data(preview_wave)
         color = wave_color("boss" if bosses else kind)
         pygame.draw.circle(screen, color, (MAP_WIDTH + 24, row_y + 8), 6)
+        if modifier:
+            pygame.draw.circle(screen, modifier["color"], (MAP_WIDTH + 24, row_y + 8), 8, 1)
         label = get_wave_label(preview_wave)
         if bosses:
             label += f" Bx{bosses}"
+        if commanders:
+            label += " CMD"
         prefix = "Now" if index == 0 else f"W{preview_wave}"
         draw_tiny_text(f"{prefix}: {label}", MAP_WIDTH + 38, row_y + 1, (230, 230, 210))
         _, recommended = get_wave_recommendation(preview_wave)
@@ -3117,10 +3520,14 @@ def draw_wave_warning_panel():
         return
 
     recommendations, tower_types = get_wave_recommendation(wave)
+    modifier = get_wave_modifier_data(wave)
     panel = pygame.Rect(285, 16, 390, 72)
     pygame.draw.rect(screen, (24, 29, 28), panel)
-    pygame.draw.rect(screen, (220, 200, 100), panel, 2)
-    draw_small_text(f"Next Wave: {get_wave_label()}", panel.x + 12, panel.y + 8, (255, 240, 170))
+    pygame.draw.rect(screen, modifier["color"] if modifier else (220, 200, 100), panel, 2)
+    title = f"Next Traffic: {get_wave_label()}"
+    if get_commander_count_for_wave(wave):
+        title += " + Commander"
+    draw_small_text(title, panel.x + 12, panel.y + 8, (255, 240, 170))
     for index, line in enumerate(recommendations):
         draw_tiny_text(line, panel.x + 12, panel.y + 34 + index * 16, (230, 230, 210))
     for index, tower_type in enumerate(tower_types):
@@ -3267,6 +3674,7 @@ def draw_command_ui():
     draw_sidebar_background()
     draw_start_and_speed_controls()
     draw_tower_shop()
+    draw_system_abilities()
     if selected_tower is None:
         draw_wave_timeline()
         draw_map_selector()
@@ -3301,6 +3709,8 @@ def reset_game():
     global spawn_timer, spawned_this_wave, wave_active, selected_tower
     global endless_mode, run_stars_awarded, selected_build_type, selected_shop_tab, paused, game_speed, spawn_path_index
     global screen_shake_timer, screen_shake_strength, boss_warning_timer
+    global pending_card_choices, run_damage_bonus, run_range_bonus, next_wave_bounty_bonus, next_wave_bounty_wave
+    global selected_ability, ability_cooldowns
 
     money = STARTING_MONEY + starting_money_bonus_level * 25
     lives = STARTING_LIVES
@@ -3327,22 +3737,31 @@ def reset_game():
     screen_shake_timer = 0
     screen_shake_strength = 0
     boss_warning_timer = 0
+    pending_card_choices = []
+    run_damage_bonus = 0.0
+    run_range_bonus = 0.0
+    next_wave_bounty_bonus = 0
+    next_wave_bounty_wave = None
+    selected_ability = None
+    ability_cooldowns = {"emp": 0.0, "quarantine": 0.0}
     endless_mode = False
     run_stars_awarded = False
     particle_manager.clear()
 
 
-def run(argv=None):
-    global window_width, window_height, selected_tower, selected_build_type
+async def run_async(argv=None, exit_on_quit=False):
+    global window_width, window_height, selected_tower, selected_build_type, selected_ability
     global sfx_enabled, music_enabled, screen_shake_timer, screen_shake_strength, boss_warning_timer
     global money, research_points, wave, spawned_this_wave, spawn_timer, wave_active
     global victory, game_over, lives, score
     global render_options, particle_manager, renderer_backend
 
     running = True
+    if argv is None and is_web_runtime():
+        argv = []
     render_options = parse_runtime_options(argv)
     particle_manager = ParticleManager(render_options.max_particles)
-    renderer_backend = make_renderer(render_options, (WIDTH, HEIGHT), "Tower Defense v0.1")
+    renderer_backend = make_renderer(render_options, (WIDTH, HEIGHT), "Signal Defense v0.1")
     window_width, window_height = renderer_backend.window_size
     init_images()
     init_sounds()
@@ -3390,10 +3809,18 @@ def run(argv=None):
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
                 selected_tower = None
                 selected_build_type = None
+                selected_ability = None
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if mouse_in_game_area(event.pos):
                     mx, my = get_game_mouse_pos()
+                    if handle_reward_card_click((mx, my)):
+                        continue
+                    if pending_card_choices:
+                        continue
+                    if selected_ability == "quarantine" and mx < MAP_WIDTH:
+                        trigger_quarantine_zone((mx, my))
+                        continue
                     if handle_command_click((mx, my)):
                         continue
 
@@ -3420,6 +3847,7 @@ def run(argv=None):
                             selected_tower = None
 
         if not game_over and not victory and not paused:
+            update_ability_cooldowns(dt)
             enemies_per_wave = get_enemies_per_wave()
             spawn_interval = get_spawn_interval()
 
@@ -3435,23 +3863,9 @@ def run(argv=None):
                         spawn_timer = 0
 
             if wave_active and spawned_this_wave >= enemies_per_wave and len(enemies) == 0:
-                completed_wave = wave
-                for tower in towers:
-                    tower.waves_present += 1
-                earned_research = get_research_reward(completed_wave)
-                money += START_WAVE_BONUS + wave
-                research_points += earned_research
-                add_floating_text(MAP_WIDTH // 2 - 30, 90, f"+{earned_research} Research", (150, 220, 255))
-                play_sound("wave_complete", 0.3)
-                wave += 1
-                spawned_this_wave = 0
-                spawn_timer = 0
-                wave_active = False
+                complete_current_wave()
 
-                if wave > MAX_WAVE and endless_mode:
-                    wave_active = False
-                elif wave > MAX_WAVE:
-                    victory = True
+            update_commander_auras()
 
             for enemy in enemies[:]:
                 enemy.update(dt)
@@ -3498,6 +3912,7 @@ def run(argv=None):
         draw_terrain()
         draw_path()
         draw_build_preview()
+        draw_ability_preview()
 
         for tower in towers:
             tower.draw()
@@ -3521,8 +3936,8 @@ def run(argv=None):
         if render_options.enable_particles:
             particle_manager.draw(screen)
 
-        draw_text(f"Money: ${money}", 15, 15)
-        draw_text(f"Lives: {lives}", 150, 15)
+        draw_text(f"CPU: ${money}", 15, 15)
+        draw_text(f"Core: {lives}", 150, 15)
         draw_text(f"Wave: {wave}/{MAX_WAVE}", 250, 15)
         draw_text(f"Research: {research_points}", 390, 15)
         draw_small_text(
@@ -3539,6 +3954,7 @@ def run(argv=None):
         draw_command_ui()
         draw_upgrade_panel()
         draw_sidebar_tooltips()
+        draw_reward_cards()
 
         if game_over:
             draw_text("GAME OVER - Press R to restart", 320, 280, (255, 80, 80))
@@ -3557,11 +3973,17 @@ def run(argv=None):
             shake_x = int(math.sin(ticks * 0.09) * screen_shake_strength)
             shake_y = int(math.cos(ticks * 0.11) * screen_shake_strength)
         renderer_backend.present(screen, scale, offset_x, offset_y, shake_x, shake_y, render_options.enable_glow)
+        await asyncio.sleep(0)
 
     if renderer_backend is not None:
         renderer_backend.close()
     pygame.quit()
-    sys.exit()
+    if exit_on_quit:
+        sys.exit()
+
+
+def run(argv=None):
+    asyncio.run(run_async(argv, exit_on_quit=True))
 
 
 if __name__ == "__main__":

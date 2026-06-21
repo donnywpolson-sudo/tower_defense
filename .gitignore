@@ -9,3 +9,6 @@ __pycache__/
 *.zip
 tools/_asset_downloads/
 .asset_cache/
+build/
+dist/
+*-pygbag.*

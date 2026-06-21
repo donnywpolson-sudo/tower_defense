@@ -1,0 +1,76 @@
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+BUILD_ROOT = ROOT / "build"
+STAGING_DIR = BUILD_ROOT / "pygbag_project" / "signal_defense"
+WEB_DIR = BUILD_ROOT / "web"
+
+
+def ensure_within_root(path):
+    resolved = path.resolve()
+    root = ROOT.resolve()
+    if resolved != root and root not in resolved.parents:
+        raise RuntimeError(f"Refusing to operate outside workspace: {resolved}")
+    return resolved
+
+
+def clean_dir(path):
+    resolved = ensure_within_root(path)
+    if resolved.exists():
+        shutil.rmtree(resolved)
+    resolved.mkdir(parents=True, exist_ok=True)
+
+
+def copy_tree(source, destination, *extra_ignores):
+    shutil.copytree(
+        source,
+        destination,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", ".pytest_cache", *extra_ignores),
+    )
+
+
+def stage_project():
+    clean_dir(STAGING_DIR)
+    shutil.copy2(ROOT / "main.py", STAGING_DIR / "main.py")
+    copy_tree(ROOT / "td_game", STAGING_DIR / "td_game")
+    copy_tree(ROOT / "assets", STAGING_DIR / "assets", "*.wav")
+    (STAGING_DIR / ".nojekyll").write_text("", encoding="utf-8")
+    return STAGING_DIR
+
+
+def build_with_pygbag(stage_dir):
+    subprocess.run(
+        [sys.executable, "-m", "pygbag", "--build", str(stage_dir)],
+        cwd=ROOT,
+        check=True,
+    )
+    pygbag_web_dir = stage_dir / "build" / "web"
+    if not pygbag_web_dir.exists():
+        raise RuntimeError(f"Pygbag did not create expected output: {pygbag_web_dir}")
+
+    clean_dir(WEB_DIR)
+    copy_tree(pygbag_web_dir, WEB_DIR)
+    return WEB_DIR
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Stage and build Signal Defense for web/Pygbag.")
+    parser.add_argument("--build", action="store_true", help="Run Pygbag after staging.")
+    args = parser.parse_args(argv)
+
+    stage_dir = stage_project()
+    print(f"Staged web project: {stage_dir}")
+    if args.build:
+        web_dir = build_with_pygbag(stage_dir)
+        print(f"Built web output: {web_dir}")
+    else:
+        print("Install pygbag and run this script with --build to create build/web.")
+
+
+if __name__ == "__main__":
+    main()

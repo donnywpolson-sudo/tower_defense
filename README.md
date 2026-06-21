@@ -24,6 +24,30 @@ For development, run:
 .\.venv\Scripts\python.exe tower_defense.py
 ```
 
+## Play On iPhone
+
+The project includes a Pygbag web build path so the game can run in Safari on iPhone.
+
+Local web build:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install pygbag
+.\.venv\Scripts\python.exe tools\build_web.py --build
+```
+
+After the build completes, Pygbag creates the browser version in `build/web`.
+
+GitHub Pages deployment:
+
+1. Push this repository to GitHub.
+2. In the GitHub repository, open Settings -> Pages.
+3. Set Build and deployment Source to GitHub Actions.
+4. Run the "Deploy Signal Defense Web" workflow, or push to `main`/`master`.
+5. Open the deployed Pages URL on your iPhone.
+6. In Safari, use Share -> Add to Home Screen.
+
+For best playability, rotate the iPhone to landscape. The desktop launcher and normal Python entry point still work.
+
 Use a specific renderer:
 
 ```powershell

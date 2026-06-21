@@ -46,7 +46,7 @@ def stage_project():
 
 def build_with_pygbag(stage_dir):
     subprocess.run(
-        [sys.executable, "-m", "pygbag", "--build", str(stage_dir)],
+        [sys.executable, "-m", "pygbag", "--build", "--ume_block", "0", str(stage_dir)],
         cwd=ROOT,
         check=True,
     )

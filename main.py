@@ -1,5 +1,7 @@
 import asyncio
 
+import pygame  # Ensures Pygbag bundles the real pygame package for web builds.
+
 from td_game.app import run_async
 
 

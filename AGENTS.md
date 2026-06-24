@@ -12,15 +12,27 @@
 * Asset tools: `tools/generate_assets.py`, `tools/download_free_assets.py`, and `tools/validate_assets.py`.
 * Web build: `.\.venv\Scripts\python.exe tools\build_web.py --build`, output under `build/web`.
 
-## Repository Rules
+## Workflow
 
+* Minimize tokens, reads, edits, commands, and output. Make the smallest safe change.
 * Check `git status --short` before editing.
+* Implement directly when clear; plan only for broad or risky work.
+* Ask only to avoid wrong or destructive changes.
+* Read targeted files only and search before opening many files.
+* Skip generated, vendor, cache, build, data, log, and binary files unless relevant.
+* Read files directly by path instead of asking for pasted logs, reports, or full output.
+* Use short summaries instead of long copied output; ask for full logs only when a short summary is not enough.
+* For multi-step work, read `CODEX_HANDOFF.md` first if it exists and update it at the end of the run with what changed, files changed, commands run, test results, remaining work, and the next recommended step. Do not create or update it for simple one-shot tasks.
+
+## Scope Control
+
 * Work only in this repo unless explicitly asked.
-* Do not overwrite user work or revert unrelated changes.
-* Do not stage, commit, delete, move, or rename files unless explicitly asked.
+* Reuse existing patterns and preserve behavior and APIs unless the task requires changing them.
+* Avoid rewrites, unrelated changes, speculative future work, and new dependencies unless clearly justified and reflected in `requirements.txt`.
+* Do not add or modify secrets, credentials, lockfiles, migrations, or generated artifacts, and do not delete user work unless required or explicitly requested.
+* Do not overwrite, revert, stage, commit, delete, move, or rename files unless explicitly asked.
+* Ask before destructive operations.
 * Keep changes small, reviewable, and focused on the requested behavior.
-* Do not add dependencies unless clearly justified and reflected in `requirements.txt`.
-* Do not add generated artifacts unless the task specifically requires them.
 
 ## Implementation Rules
 
@@ -60,10 +72,11 @@ When choosing implementation details, prioritize:
 
 When changing code:
 
-* Run the narrowest relevant pytest test first.
+* Run the narrowest relevant pytest test first; broaden only when the change warrants it.
 * Run `.\.venv\Scripts\python.exe -m pytest` for broad gameplay/system changes when practical.
 * Run `.\.venv\Scripts\python.exe tools\validate_assets.py` when changing assets, asset manifests, or asset loading paths.
 * Provide manual game check steps for visual, input, rendering, audio, or balance changes.
+* If checks are run or cannot run, mention only important failures or unresolved risks under `Notes/blockers`.
 
 ## Output Format For Code Changes
 
